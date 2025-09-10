@@ -1,0 +1,65 @@
+# Julia specific
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+deps/deps.jl
+deps/build.log
+deps/builds/
+Manifest.toml
+*.jld2
+
+# System specific
+.DS_Store
+Thumbs.db
+
+# IDE specific
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Documentation build
+docs/build/
+docs/site/
+
+# Coverage files
+*.info
+coverage/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Package manager
+.julia/
+
+# Test artifacts
+test/logs/
+test/artifacts/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# OS specific
+*.log
+*.pid
+*.seed
+*.pid.lock
+
+# Backup files
+*.bak
+*.backup
+
+# Local configuration
+.claude/settings.local.json
+
+# GitHub specific
+.github/workflows/*.yml.bak
+CLAUDE.md
+
+# AI-generated improvement suggestions
+possible_improvement_by_AI.md
