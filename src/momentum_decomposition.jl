@@ -122,6 +122,8 @@ function ED_momentum_block_division(para::EDPara, mbs_list::Vector{MBS64{bits}};
         return blocks, block_k1, block_k2, 0
     end
 
+    Gk = para.Gk
+
     # Preprocess momentum list to be within Gk and no duplicates
     for i in eachindex(momentum_list)
         k1, k2 = momentum_list[i]
