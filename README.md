@@ -74,7 +74,7 @@ println("Ground state energy: ", energies[1])
 
 - **EDPara**: Central parameter container for system configuration
 - **MBS64{bits}**: Many-body state representation using bit encoding
-- **Scattering{N}**: Hamiltonian term representation: usually N=1 or 2 for so-called "one/two-point scattering term"
+- **Scattering{N}**: Hamiltonian term representation: usually N=1 or 2 for one-/two-body scattering terms
 
 ### Main Functions
 
@@ -111,8 +111,7 @@ The package includes example notebooks:
 ## Documentation
 
 Comprehensive documentation is available at:
-- [Stable Documentation](https://Zou-Bo.github.io/MomentumED.jl/stable)
-- [Development Documentation](https://Zou-Bo.github.io/MomentumED.jl/dev)
+- [Documentation](https://Zou-Bo.github.io/MomentumED.jl/stable)
 
 ## License
 
