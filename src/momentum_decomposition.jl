@@ -1,7 +1,7 @@
 """
 mbslist.jl - Many-Body State List Generation
 
-This module provides functions for generating lists of MBS64 states with
+This file provides functions for generating lists of MBS64 states with
 specified particle numbers per conserved component, organized for efficient
 momentum-block diagonalization.
 """
@@ -82,6 +82,8 @@ This function takes a complete basis of MBS64 states and divides them into block
 where each block contains states with the same total (k1, k2) momentum. This enables
 momentum-conserved diagonalization by processing each block independently.
 
+Duplicates, up to mod Gk, in the suggested momentum_list will be removed.
+
 # Arguments
 - `para::EDPara`: Parameter structure containing momentum and component information
 - `mbs_list::Vector{MBS64{bits}}`: Complete basis of MBS64 states
@@ -112,41 +114,61 @@ function ED_momentum_block_division(para::EDPara, mbs_list::Vector{MBS64{bits}};
     momentum_list::Vector{Tuple{Int64, Int64}} = Vector{Tuple{Int64, Int64}}(),
     ) where {bits}
 
-    # Calculate momentum for each MBS
-    TotalMomentum = Matrix{Int64}(undef, 2, length(mbs_list))
-    k1_list = Vector{Int64}(undef, length(mbs_list))
-    k2_list = Vector{Int64}(undef, length(mbs_list))
-    
-    for (idx, mbs) in enumerate(mbs_list)
-        k1, k2 = MBS64_totalmomentum(para, mbs)
-        TotalMomentum[1, idx] = k1
-        TotalMomentum[2, idx] = k2
-        k1_list[idx] = k1
-        k2_list[idx] = k2
-    end
-
     blocks = typeof(mbs_list)[]
     block_k1 = Int64[]
     block_k2 = Int64[]
     
-    # Determine momentum ranges
     if isempty(mbs_list)
         return blocks, block_k1, block_k2, 0
     end
-    
-    k1min, k2min = minimum(TotalMomentum, dims=2)
-    k1max, k2max = maximum(TotalMomentum, dims=2)
 
+    # Preprocess momentum list to be within Gk and no duplicates
+    for i in eachindex(momentum_list)
+        k1, k2 = momentum_list[i]
+        iszero(Gk[1]) || (k1 = mod(k1, Gk[1]))
+        iszero(Gk[2]) || (k2 = mod(k2, Gk[2]))
+        momentum_list[i] = (k1, k2)
+    end
+    listmask = trues(length(momentum_list))
+    for i in 1:length(momentum_list)-1, j in i+1:length(momentum_list)
+        if momentum_list[i] == momentum_list[j]
+            listmask[j] = false
+        end
+    end
+    momentum_list = momentum_list[listmask]
+
+    # Adjust k1range and k2range if they are too large
+    k1range = minmax(k1range...)
+    k2range = minmax(k2range...)
+    if !iszero(Gk[1]) && k1range[2] - k1range[1] + 1 > Gk[1]
+        k1range = (0, Gk[1]-1)
+    end
+    if !iszero(Gk[2]) && k2range[2] - k2range[1] + 1 > Gk[2]
+        k2range = (0, Gk[2]-1)
+    end
+
+    # Calculate momentum for each MBS
+    k1_list = similar(mbs_list, Int64)
+    k2_list = similar(mbs_list, Int64)
+
+    for (idx, mbs) in enumerate(mbs_list)
+        k1_list[idx], k2_list[idx] = MBS64_totalmomentum(para, mbs)
+    end
+    
+    # Determine momentum ranges
     if momentum_restriction
-        k1min = max(k1range[1], k1min)
-        k2min = max(k2range[1], k2min)
-        k1max = min(k1range[2], k1max)
-        k2max = min(k2range[2], k2max)
+        k1min, k1max = k1range
+        k2min, k2max = k2range
+    else
+        k1min, k1max = minmax(k1_list)
+        k2min, k2max = minmax(k2_list)
     end
 
     # Group by momentum
     if isempty(momentum_list)
         for K1 in k1min:k1max, K2 in k2min:k2max
+            iszero(Gk[1]) || (K1 = mod(K1, Gk[1]))
+            iszero(Gk[2]) || (K2 = mod(K2, Gk[2]))
             mask = findall((k1_list .== K1) .& (k2_list .== K2))
             if !iszero(length(mask))
                 push!(blocks, mbs_list[mask])
@@ -156,6 +178,8 @@ function ED_momentum_block_division(para::EDPara, mbs_list::Vector{MBS64{bits}};
         end
     else
         for K1 in k1min:k1max, K2 in k2min:k2max
+            iszero(Gk[1]) || (K1 = mod(K1, Gk[1]))
+            iszero(Gk[2]) || (K2 = mod(K2, Gk[2]))
             if (K1, K2) ∈ momentum_list
                 mask = findall((k1_list .== K1) .& (k2_list .== K2))
                 if !iszero(length(mask))
