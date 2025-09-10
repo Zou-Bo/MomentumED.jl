@@ -1,5 +1,3 @@
-import Base: @assert
-
 """
     EDPara - Parameters for momentum-conserved exact diagonalization
     
@@ -76,36 +74,3 @@ mutable struct EDPara
     end
 end
 
-"""
-    int_amp(i1::Int64, i2::Int64, f1::Int64, f2::Int64, para::EDPara; kshift::Tuple{Float64, Float64}=(0.0, 0.0))::ComplexF64
-
-Rewrite V_int, inputs are (momentum + component) combined index.
-
-Maps combined indices back to momentum and component indices, then calls the
-interaction potential function with proper momentum conservation factors and k-mesh shift.
-
-# Arguments
-- `i1, i2, f1, f2::Int64`: Combined momentum+component indices
-- `para::EDPara`: ED parameters struct
-- `kshift::Tuple{Float64, Float64}`: K-mesh shift for twisted boundary conditions (default: (0.0, 0.0))
-"""
-function int_amp(i1::Int64, i2::Int64, f1::Int64, f2::Int64, para::EDPara; kshift::Tuple{Float64, Float64}=(0.0, 0.0))::ComplexF64
-
-    # Map combined indices back to momentum and component indices
-    Nk = para.Nk
-    Gk1 = para.Gk[1]
-    Gk2 = para.Gk[2]
-    ci1, ki1 = fldmod1(i1, Nk)
-    ci2, ki2 = fldmod1(i2, Nk)
-    cf1, kf1 = fldmod1(f1, Nk)
-    cf2, kf2 = fldmod1(f2, Nk)
-
-    # Apply k-mesh shift for twisted boundary conditions
-    # Convert momentum indices using: (view(k_list, 1:2, k_index) .+ kshift) ./ Gk
-    k_coords_f1 = (Tuple(view(para.k_list, 1:2, kf1) .+ kshift) ./ para.Gk)
-    k_coords_f2 = (Tuple(view(para.k_list, 1:2, kf2) .+ kshift) ./ para.Gk)
-    k_coords_i1 = (Tuple(view(para.k_list, 1:2, ki1) .+ kshift) ./ para.Gk)
-    k_coords_i2 = (Tuple(view(para.k_list, 1:2, ki2) .+ kshift) ./ para.Gk)
-
-    return para.V_int(k_coords_f1, k_coords_f2, k_coords_i1, k_coords_i2, cf1, cf2, ci1, ci2) / Gk1 / Gk2
-end

@@ -107,7 +107,6 @@ Neigen = 10
 
 
 for i in eachindex(blocks)
-    println("Processing block #$i with size $(length(blocks[i])), momentum $(block_k1[i]), $(block_k2[i])")
     energies[i] = EDsolve(blocks[i], scat_list1, scat_list2, Neigen;
     showtime=true, converge_warning = false)[1]
 end

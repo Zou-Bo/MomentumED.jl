@@ -1,12 +1,5 @@
-"""
-mbslist.jl - Many-Body State List Generation
-
-This file provides functions for generating lists of MBS64 states with
-specified particle numbers per conserved component, organized for efficient
-momentum-block diagonalization.
-"""
-
 using Combinatorics
+
 
 """
     ED_mbslist_onecomponent(para::EDPara, N_in_one::Int64)
@@ -69,6 +62,47 @@ function ED_mbslist(para::EDPara, N_each_component::NTuple{N, Int64}) where {N}
     end
     return list
 end
+
+
+
+"""
+    MBS_totalmomentum(para::EDPara, mbs::MBS64)
+
+Calculate the total momentum (K1, K2) of a many-body state.
+The momentum is mod G if G is nonzero (from para.Gk).
+"""
+function MBS_totalmomentum(para::EDPara, mbs::MBS64)
+    # momentum are integers
+    k1 = 0; k2 = 0; Gk = para.Gk
+    for i in occ_list(mbs)
+        momentum = @view para.k_list[:, mod1(i, para.Nk)]
+        k1 += momentum[1]
+        k2 += momentum[2]
+    end
+    iszero(Gk[1]) || (k1 = mod(k1, Gk[1]))
+    iszero(Gk[2]) || (k2 = mod(k2, Gk[2]))
+    return k1, k2
+end
+
+"""
+    MBS_totalmomentum(para::EDPara, i_list::Int64...)
+
+Calculate the total momentum (K1, K2) from a list of occupied orbital indices.
+"""
+function MBS_totalmomentum(para::EDPara, i_list::Int64...)
+    # momentum are integers
+    k1 = 0; k2 = 0; Gk = para.Gk
+    for i in i_list
+        momentum = @view para.k_list[:, mod1(i, para.Nk)]
+        k1 += momentum[1]
+        k2 += momentum[2]
+    end
+    iszero(Gk[1]) || (k1 = mod(k1, Gk[1]))
+    iszero(Gk[2]) || (k2 = mod(k2, Gk[2]))
+    return k1, k2
+end
+
+
 
 """
     ED_momentum_block_division(para::EDPara, mbs_list::Vector{MBS64{bits}};
@@ -154,7 +188,7 @@ function ED_momentum_block_division(para::EDPara, mbs_list::Vector{MBS64{bits}};
     k2_list = similar(mbs_list, Int64)
 
     for (idx, mbs) in enumerate(mbs_list)
-        k1_list[idx], k2_list[idx] = MBS64_totalmomentum(para, mbs)
+        k1_list[idx], k2_list[idx] = MBS_totalmomentum(para, mbs)
     end
     
     # Determine momentum ranges
@@ -162,8 +196,8 @@ function ED_momentum_block_division(para::EDPara, mbs_list::Vector{MBS64{bits}};
         k1min, k1max = k1range
         k2min, k2max = k2range
     else
-        k1min, k1max = minmax(k1_list)
-        k2min, k2max = minmax(k2_list)
+        k1min, k1max = extrema(k1_list)
+        k2min, k2max = extrema(k2_list)
     end
 
     # Group by momentum
