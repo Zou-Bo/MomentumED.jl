@@ -270,7 +270,8 @@ end
 
 
 """
-    matrix_solve(H::SparseMatrixCSC{ComplexF64,Int64}, N_eigen::Int64=6) -> (vals, vecs)
+    matrix_solve(H::SparseMatrixCSC{ComplexF64,Int64}, N_eigen::Int64=6; 
+        converge_warning::Bool=false, krylovkit_kwargs...) -> (vals, vecs)
 
 Solve the sparse Hamiltonian matrix using KrylovKit's eigsolve function for the lowest n eigenvalues and eigenvectors.
 
@@ -280,6 +281,7 @@ Solve the sparse Hamiltonian matrix using KrylovKit's eigsolve function for the 
 
 # Keywords
 - `converge_warning::Bool=false`: Whether to show a warning if the solver does not converge
+- `krylovkit_kwargs...`: Additional keyword arguments to pass to KrylovKit.eigsolve
 
 # Returns
 - `vals::Vector{Float64}`: Eigenvalues (energies) in ascending order
@@ -302,12 +304,12 @@ println("Ground state energy: ", vals[1])
 function matrix_solve(
     H::SparseMatrixCSC{ComplexF64,Int64},
     N_eigen::Int64=6;
-    converge_warning::Bool=false
+    converge_warning::Bool=false, krylovkit_kwargs...
 )::Tuple{Vector{Float64}, Vector{Vector{ComplexF64}}}
     dim = H.m
     vec0 = rand(ComplexF64, dim)
     N_eigen > dim && (N_eigen = dim)
-    vals, vecs, info = eigsolve(H, vec0, N_eigen, :SR, ishermitian=true)
+    vals, vecs, info = eigsolve(H, vec0, N_eigen, :SR; ishermitian=true, krylovkit_kwargs...)
     # Handle convergence information from KrylovKit
     if !(info.converged == true || info.converged == 1)
         if converge_warning
@@ -322,8 +324,9 @@ end
 """
     EDsolve(sorted_mbs_block_list::Vector{MBS64{bits}}, 
            sorted_onebody_scat_list::Vector{Scattering{1}},
-           sorted_twobody_scat_list::Vector{Scattering{2}}, 
-           N_eigen::Int64=6) -> (vals, vecs) where {bits}
+           sorted_twobody_scat_list::Vector{Scattering{2}},
+           N_eigen::Int64=6; showtime::Bool = false, converge_warning::Bool=false,
+           krylovkit_kwargs...) -> (vals, vecs)
 
 Main interface function for exact diagonalization of momentum-conserved quantum systems.
 Constructs the sparse Hamiltonian matrix from scattering lists and diagonalizes it.
@@ -337,6 +340,7 @@ Constructs the sparse Hamiltonian matrix from scattering lists and diagonalizes 
 # Keywords
 - `showtime::Bool=false`: Whether to print timing information for matrix construction and diagonalization
 - `converge_warning::Bool=false`: Whether to show a warning if the eigensolver does not converge
+- `krylovkit_kwargs...`: Additional keyword arguments to pass to KrylovKit.eigsolve
 
 # Type Parameters
 - `bits`: Number of bits in MBS64 type (determines system size)
@@ -372,8 +376,8 @@ println("Ground state energy: ", energies[1])
 function EDsolve(sorted_mbs_block_list::Vector{MBS64{bits}}, 
     sorted_onebody_scat_list::Vector{Scattering{1}},
     sorted_twobody_scat_list::Vector{Scattering{2}}, 
-    N_eigen::Int64=6; 
-    showtime = false, converge_warning::Bool=false) where {bits}
+    N_eigen::Int64=6; showtime = false, converge_warning::Bool=false,
+    krylovkit_kwargs...) where {bits}
     # Construct sparse Hamiltonian matrix from scattering terms
     if showtime
         @time H = HmltMatrix_threaded(sorted_mbs_block_list, 
@@ -387,9 +391,9 @@ function EDsolve(sorted_mbs_block_list::Vector{MBS64{bits}},
 
     # Solve the eigenvalue problem
     if showtime
-        @time vals, vecs = matrix_solve(H, N_eigen; converge_warning = converge_warning)
+        @time vals, vecs = matrix_solve(H, N_eigen; converge_warning = converge_warning, krylovkit_kwargs...)
     else
-        vals, vecs = matrix_solve(H, N_eigen; converge_warning = converge_warning)
+        vals, vecs = matrix_solve(H, N_eigen; converge_warning = converge_warning, krylovkit_kwargs...)
     end
 
     return vals, vecs
