@@ -12,7 +12,7 @@ A Julia package for momentum-conserved exact diagonalization of quantum many-bod
 
 This package provides ideal tools for exact diagonalization of 2D quantum many-body systems in momentum space. The Hamiltonian is Hermitian, momentum-conserved. Additional component index are allowed. 
 
-This package provides types MBS64{bits} and Scattering{N} for easy manipulation, a eigensolver that warps solver in KrylovKit.jl which require inputs (Vector{MBS64{bits}}, Vector{Scattering{1}}, Vector{Scattering{2}}), and a serious of problem-initiating functions that converts standard many-body problems into the desired inputs of eigensolver. These functions are made with the assumption that the interaction is symmetric in switching the two vertices; if you are doing an specific problem that fails to fit in this assumption, consider making your dedicated initiating process.
+This package provides types MBS64{bits} and Scattering{N} for easy manipulation, a eigensolver that warps solver in KrylovKit.jl and requires inputs (Vector{MBS64{bits}}, Vector{Scattering{1}}, Vector{Scattering{2}}), and a series of problem-initiating functions that converts standard many-body problems into the desired inputs of eigensolver. These functions are made with the assumption that the interaction is symmetric in switching the two vertices; if you are doing a specific problem that fails to fit in this assumption, consider making your dedicated initiating process.
 
 This package also tries to provide analysis of entanglement entropy, reduced density matrix, many-body connection, but these codes are still in test.
 
@@ -106,6 +106,7 @@ println("Ground state energy: ", energies[1])
 The package supports systems with multiple components:
 - Conserved components
 - Non-conserved components (also called hopping components in the code because usually there're hopping terms between them)
+
 Using conserved components allows you to assign the particle number of each component when generating many-body state(mbs) list. The package will not check if the particle number is really conserved when generating scattering list from given one-body term and two-body interaction. However, if a scattering term scatters a mbs state outside the provided mbs list, the EDsolve() function will throw a "NonConserved" error.
 
 ## Performance
@@ -126,7 +127,7 @@ The package includes example notebooks:
 ## Documentation
 
 Comprehensive documentation is available at:
-- [Documentation](https://Zou-Bo.github.io/MomentumED.jl/stable)
+- [Documentation](https://Zou-Bo.github.io/MomentumED.jl/stable) (In construction)
 
 ## Contribution
 Let me know if you have any problems in using the package or find bugs.
@@ -142,7 +143,7 @@ If you use this package in your research, you might cite:
 ```bibtex
 @software{MomentumED.jl,
   author = {Zou, Bo},
-  title = {{MomentumED.jl}: A Julia Package for Exact Diagonalization with Momentum Conservation},
+  title = {{MomentumED.jl}: A Julia Package for Exact Diagonalization in Momentum Basis},
   year = {2025},
   publisher = {GitHub},
   journal = {GitHub repository},
