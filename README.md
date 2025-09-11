@@ -52,8 +52,9 @@ Nc_hopping = 1
 Nc_conserved = 1
 
 # Define one-body Hamiltonian (4-dim array)
-H0 = ComplexF64[ #= Your Hamiltonian elements here =# 0.0
-  for ch_out in 1:Nc_hopping, ch_in in 1:Nc_hopping, cc in 1:Nc_conserved, k in 1:size(k_list, 2)
+H0 = ComplexF64[ #= Your Hamiltonian elements here =# 
+  cospi(2 * k_list[1, k] / Gk[1]) + cospi(2 * k_list[2, k] / Gk[2]) # Simple band dispersion
+  for ch_out in 1:Nc_hopping, ch_in in 1:Nc_hopping, cc in 1:Nc_conserved, k in axes(k_list, 2)
 ]
 
 # Define interaction function
@@ -87,7 +88,7 @@ println("Ground state energy: ", energies[1])
 ### Core Data Structures
 
 - **MBS64{bits}**: Many-body state representation using bit encoding in a UInt64
-- **Scattering{N}**: Hamiltonian term representation: usually N=1 or 2 for one-/two-body scattering terms
+- **Scattering{N}**: Hamiltonian term representation: usually N=1 or 2 for one-/two-body "scattering" terms
 - **EDPara**: Central parameter container for standard system configuration
 
 ### Main Functions
@@ -98,13 +99,13 @@ println("Ground state energy: ", energies[1])
 - **ED_sortedScatteringList_twobody()**: Generate two-body scattering terms
 - **EDsolve()**: Solve eigenvalue problem for momentum block using KrylovKit.jl
 - **ED_etg_entropy()**: Calculate entanglement entropy
-- **ED_connection_integral()**: Calculate Berry connection
+- **ED_connection_integral()**: Calculate many-body connection
 
 ### Multi-Component Systems
 
 The package supports systems with multiple components:
 - Conserved components
-- Non-conserved components
+- Non-conserved components (also called hopping components in the code because usually there're hopping terms between them)
 Using conserved components allows you to assign the particle number of each component when generating many-body state(mbs) list. The package will not check if the particle number is really conserved when generating scattering list from given one-body term and two-body interaction. However, if a scattering term scatters a mbs state outside the provided mbs list, the EDsolve() function will throw a "NonConserved" error.
 
 ## Performance
