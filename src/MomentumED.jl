@@ -15,7 +15,7 @@ export ED_sortedScatteringList_twobody
 # main solving function
 export EDsolve
 # analysis
-export ED_etg_entropy, ED_connection_integral
+export ED_onebody_rdm, ED_etg_entropy, ED_connection_integral
 
 using LinearAlgebra
 using SparseArrays
@@ -84,7 +84,7 @@ function matrix_solve(
         end
     end
 
-    return vals[1:N_eigen], vecs[1:N_eigen]
+    return view(vals, 1:N_eigen), view(vecs, 1:N_eigen)
 end
 
 
@@ -168,7 +168,7 @@ end
 
 
 
-
+include("analysis/onebody_reduced_density_matrix.jl")
 include("analysis/entanglement_entropy.jl")
 include("analysis/manybody_connection.jl")
 

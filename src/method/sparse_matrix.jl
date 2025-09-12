@@ -181,7 +181,7 @@ function HmltMatrix_threaded(
                         mbs_out = occupy!(mbs_mid, scat.out...; check=false)
                         # i = get(state_mapping, mbs_out.n, 0)
                         i = my_searchsortedfirst(sorted_mbs_block_list, mbs_out)
-                        @assert i != 0 "H is not momentum-conserving."
+                        @assert i != 0 "H is not momentum- or component-conserving."
                         
                         if iseven(occ_num_between(mbs_mid, scat.in...) + occ_num_between(mbs_mid, scat.out...))
                             push!(thread_I[tid], i)
@@ -212,7 +212,7 @@ function HmltMatrix_threaded(
                         mbs_out = occupy!(mbs_mid, scat.out...; check=false)
                         # i = get(state_mapping, mbs_out.n, 0)
                         i = my_searchsortedfirst(sorted_mbs_block_list, mbs_out)
-                        @assert i != 0 "H is not momentum-conserving."
+                        @assert i != 0 "H is not momentum- or component-conserving."
                         
                         push!(thread_I[tid], i)
                         push!(thread_J[tid], j)

@@ -13,7 +13,7 @@ Parameters for momentum-conserved exact diagonalization calculations.
 
 # Fields
 - `Gk::Tuple{Int64, Int64}`: Momentum conservation mod G (default: (0, 0))
-- `k_list::Matrix{Int64}`: k_list[:, i] = (k_x, k_y) momentum states
+- `k_list::Matrix{Int64}`: k_list[:, i] = (k_1, k_2) momentum states
 - `Nk::Int64`: Number of momentum states
 - `Nc_hopping::Int64`: Number of components with hopping (not conserved)
 - `Nc_conserve::Int64`: Number of components with conserved quantum numbers

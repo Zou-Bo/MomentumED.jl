@@ -47,9 +47,9 @@ k_list = [0 1 2 0 1 2 0 1 2 0 1 2 0 1 2;
           0 0 0 1 1 1 2 2 2 3 3 3 4 4 4]
 Gk = (3, 5)
 
-# System with one compotent
-Nc_hopping = 1
-Nc_conserved = 1
+# Example system with one compotent
+Nc_hopping = 1 # default number if not being configured explcitly
+Nc_conserved = 1 # default number if not being configured explcitly
 
 # Define one-body Hamiltonian (4-dim array)
 H0 = ComplexF64[ #= Your Hamiltonian elements here =# 
@@ -57,9 +57,11 @@ H0 = ComplexF64[ #= Your Hamiltonian elements here =#
   for ch_out in 1:Nc_hopping, ch_in in 1:Nc_hopping, cc in 1:Nc_conserved, k in axes(k_list, 2)
 ]
 
-# Define interaction function
-function V_int(k_coords_f1, k_coords_f2, k_coords_i1, k_coords_i2, cf1=1, cf2=1, ci1=1, ci2=1)
-    # k_coords_* are tuples (k1, k2) as a ratio Gk
+# Define interaction function, giving the amplitude before c†_{f1} c†_{f2} c_{i2} c_{i1}
+# inputs are in order of the creation/annilation operators
+function V_int(k_coords_f1, k_coords_f2, k_coords_i2, k_coords_i1, cf1=1, cf2=1, ci2=1, ci1=1)
+    # k_coords_* are tuples (k1, k2)
+    # each element is either the momentum (when Gk=0) or the ratio of momentum to Gk (when Gk!=0)
     # Your interaction potential here
     return 1.0 + 0.0im  # Simple constant interaction will induce no interaction term because of Fermion exchange. 
 end
