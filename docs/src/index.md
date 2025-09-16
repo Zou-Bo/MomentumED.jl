@@ -41,16 +41,29 @@ using MomentumED
 # Define k-mesh for 2D system
 k_list = [0 1 2 0 1 2 0 1 2 0 1 2 0 1 2;
           0 0 0 1 1 1 2 2 2 3 3 3 4 4 4]
+Gk = (3, 5)
 
-# Define interaction function
-function V_int(k_coords_f1, k_coords_f2, k_coords_i1, k_coords_i2, cf1=1, cf2=1, ci1=1, ci2=1)
-    # k_coords_* are tuples (kx, ky) already normalized by Gk
+# Example system with one compotent
+Nc_hopping = 1 # default number if not being configured explcitly
+Nc_conserved = 1 # default number if not being configured explcitly
+
+# Define one-body Hamiltonian (4-dim array)
+H0 = ComplexF64[ #= Your Hamiltonian elements here =# 
+  cospi(2 * k_list[1, k] / Gk[1]) + cospi(2 * k_list[2, k] / Gk[2]) # Simple band dispersion
+  for ch_out in 1:Nc_hopping, ch_in in 1:Nc_hopping, cc in 1:Nc_conserved, k in axes(k_list, 2)
+]
+
+# Define interaction function, giving the amplitude before c†_{f1} c†_{f2} c_{i2} c_{i1}
+# inputs are in order of the creation/annilation operators
+function V_int(k_coords_f1, k_coords_f2, k_coords_i2, k_coords_i1, cf1=1, cf2=1, ci2=1, ci1=1)
+    # k_coords_* are tuples (k1, k2)
+    # each element is either the momentum (when Gk=0) or the ratio of momentum to Gk (when Gk!=0)
     # Your interaction potential here
-    return 1.0 + 0.0im  # Simple constant interaction
+    return 1.0 + 0.0im  # Simple constant interaction will induce no interaction term because of Fermion exchange. 
 end
 
-# Create parameter structure
-para = EDPara(k_list=k_list, Gk=(3, 5), V_int=V_int)
+# Create parameter structure with keywords
+para = EDPara(k_list=k_list, Gk=Gk, Nc_hopping=Nc_hopping, Nc_conserve=Nc_conserve, H_onebody=H0, V_int=V_int)
 
 # Generate many-body states for 4 particles
 mbs_list = ED_mbslist(para, 4)
@@ -62,7 +75,7 @@ blocks, block_k1, block_k2, k0number = ED_momentum_block_division(para, mbs_list
 scat_list1 = ED_sortedScatteringList_onebody(para)
 scat_list2 = ED_sortedScatteringList_twobody(para)
 
-# Solve first momentum block
+# Solve first momentum block with 5 lowest eigenenergies
 energies, eigenvectors = EDsolve(blocks[1], scat_list1, scat_list2, 5)
 
 println("Ground state energy: ", energies[1])
@@ -102,7 +115,7 @@ MIT License - see [LICENSE](LICENSE) file.
 ```bibtex
 @software{MomentumED.jl,
   author = {Zou, Bo},
-  title = {{MomentumED.jl}: A Julia Package for Exact Diagonalization with Momentum Conservation},
+  title = {{MomentumED.jl}: A Julia Package for Exact Diagonalization in Momentum Basis},
   year = {2025},
   publisher = {GitHub},
   journal = {GitHub repository},
