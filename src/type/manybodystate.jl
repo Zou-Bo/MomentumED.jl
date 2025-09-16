@@ -1,4 +1,3 @@
-
 """
     MBS64{bits} <: Integer
 
@@ -228,19 +227,33 @@ end
 =#
 
 """
-    occ_num_between(mbs::MBS64{bits}, i_start::Int64, i_end::Int64) where {bits}
+    scat_occ_number(mbs::MBS64{bits}, i_list::Union{Vector{Int64}, NTuple{N, Int64}}) where {bits}
 
-Count the number of occupied orbitals between two bit positions (exclusive).
-The range can be specified in either order.
+Count the total number of occupied orbitals that contribute to the sign flip when applying a series of creation/annihilation operators.
 """
-function occ_num_between(mbs::MBS64{bits}, i_start::Int64, i_end::Int64) where {bits}
-    @assert 1 <= i_start <= bits "Invalid bit positions"
-    @assert 1 <= i_end <= bits "Invalid bit positions"
-    i_start, i_end = minmax(i_start, i_end) # allow inversely-ordered inputs
+function scat_occ_number(mbs::MBS64{bits}, i_list::Vector{Int64}) where {bits}
+
+    i_list = sort(i_list) # sort from small to large
+    N = length(i_list) # number of operators
+    if N == 0
+        return 0
+    end
+
+    @assert i_list[end] <= bits "Invalid bit positions"
+    @assert 1 <= i_list[1] "Invalid bit positions"
+
     mask = zero(UInt64)
-    for i in i_start+1:i_end-1
-        mask |= UInt64(1) << (i - 1)
+    if isodd(N)
+        push!(i_list, bits + 1) # the last segment goes to the end
+    end
+    for x in 1:2:N
+        # count the occupation number in segment i_list[x]+1 : i_list[x+1]-1
+        for i in i_list[x]+1:i_list[x+1]-1
+            mask |= UInt64(1) << (i - 1)
+        end
     end
     return count_ones(mbs.n & mask)
+
 end
+scat_occ_number(mbs::MBS64, i_list::Tuple{Vararg{Int64}}) = scat_occ_number(mbs, collect(i_list))
 

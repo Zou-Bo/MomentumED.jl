@@ -20,7 +20,6 @@ export ED_onebody_rdm, ED_etg_entropy, ED_connection_integral
 using LinearAlgebra
 using SparseArrays
 using KrylovKit
-using Base.Threads
 
 
 # Include utilities
@@ -144,23 +143,56 @@ function EDsolve(sorted_mbs_block_list::Vector{MBS64{bits}},
     sorted_onebody_scat_list::Vector{Scattering{1}},
     sorted_twobody_scat_list::Vector{Scattering{2}}, 
     N_eigen::Int64=6; showtime = false, converge_warning::Bool=false,
-    krylovkit_kwargs...) where {bits}
-    # Construct sparse Hamiltonian matrix from scattering terms
-    if showtime
-        @time H = HmltMatrix_threaded(sorted_mbs_block_list, 
-            sorted_onebody_scat_list, sorted_twobody_scat_list;
-        )
-    else
-        H = HmltMatrix_threaded(sorted_mbs_block_list,
-            sorted_onebody_scat_list, sorted_twobody_scat_list;
-        )
-    end
+    method = :sparse, krylovkit_kwargs...) where {bits}
 
-    # Solve the eigenvalue problem
-    if showtime
-        @time vals, vecs = matrix_solve(H, N_eigen; converge_warning = converge_warning, krylovkit_kwargs...)
+    if method == :map
+
+        error("Linear map method is under development. Please use :sparse or :dense method.")
+
+    elseif method == :sparse || method == :dense
+
+        # Construct sparse Hamiltonian matrix from scattering terms
+        if showtime
+            @time H = HmltMatrix_threaded(sorted_mbs_block_list, 
+                sorted_onebody_scat_list, sorted_twobody_scat_list;
+            )
+        else
+            H = HmltMatrix_threaded(sorted_mbs_block_list,
+                sorted_onebody_scat_list, sorted_twobody_scat_list;
+            )
+        end
+
+        if method == :sparse
+
+            # Solve the eigenvalue problem
+            if showtime
+                @time vals, vecs = matrix_solve(H, N_eigen; converge_warning = converge_warning, krylovkit_kwargs...)
+            else
+                vals, vecs = matrix_solve(H, N_eigen; converge_warning = converge_warning, krylovkit_kwargs...)
+            end
+
+        elseif method == :dense
+
+            dim = size(H, 1)
+            if dim > 2000
+                @warn "Dense diagonalization may be slow for dim=$dim. Consider using :sparse method."
+            end
+            N_eigen > dim && (N_eigen = dim)
+
+            # Convert to dense matrix and solve
+            if showtime
+                @time vals, vecs = eigen(Hermitian(Matrix(H)))
+            else
+                vals, vecs = eigen(Hermitian(Matrix(H)))
+            end
+            vals = vals[1:N_eigen]
+            vecs = vecs[:, 1:N_eigen]
+            vecs = [vecs[:, i] for i in 1:N_eigen]  # Convert to vector of vectors
+
+        end
+
     else
-        vals, vecs = matrix_solve(H, N_eigen; converge_warning = converge_warning, krylovkit_kwargs...)
+        error("Unknown method: $method. Use :sparse, :dense, or :map.")
     end
 
     return vals, vecs

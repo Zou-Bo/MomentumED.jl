@@ -6,8 +6,7 @@
     and two-body scattering terms with proper Hermitian matrix construction.
 """
 
-using KrylovKit
-# using ExtendableSparse
+
 
 """
     my_searchsortedfirst(list, i)
@@ -182,16 +181,11 @@ function HmltMatrix_threaded(
                         # i = get(state_mapping, mbs_out.n, 0)
                         i = my_searchsortedfirst(sorted_mbs_block_list, mbs_out)
                         @assert i != 0 "H is not momentum- or component-conserving."
-                        
-                        if iseven(occ_num_between(mbs_mid, scat.in...) + occ_num_between(mbs_mid, scat.out...))
-                            push!(thread_I[tid], i)
-                            push!(thread_J[tid], j)
-                            push!(thread_V[tid], scat.Amp)
-                        else
-                            push!(thread_I[tid], i)
-                            push!(thread_J[tid], j)
-                            push!(thread_V[tid], -scat.Amp)
-                        end
+
+                        sign_occ = (-1)^(scat_occ_number(mbs_mid, scat.in) + scat_occ_number(mbs_mid, scat.out))
+                        push!(thread_I[tid], i)
+                        push!(thread_J[tid], j)
+                        push!(thread_V[tid], sign_occ * scat.Amp)
                     end
                 end
             end
@@ -213,10 +207,11 @@ function HmltMatrix_threaded(
                         # i = get(state_mapping, mbs_out.n, 0)
                         i = my_searchsortedfirst(sorted_mbs_block_list, mbs_out)
                         @assert i != 0 "H is not momentum- or component-conserving."
-                        
+
+                        sign_occ = (-1)^(scat_occ_number(mbs_mid, scat.in) + scat_occ_number(mbs_mid, scat.out))
                         push!(thread_I[tid], i)
                         push!(thread_J[tid], j)
-                        push!(thread_V[tid], scat.Amp)
+                        push!(thread_V[tid], sign_occ * scat.Amp)
                     end
                 end
             end

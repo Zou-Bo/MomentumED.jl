@@ -1,12 +1,11 @@
 """
 Many-body Berry connection calculation functions for momentum-conserved exact diagonalization.
 
-This module implements the calculation of Berry connections and geometric phases between
+This file implements the calculation of Berry connections and geometric phases between
 different kshift points in momentum space, which is essential for computing topological
 invariants like Chern numbers.
 """
 
-export ED_connection_integral
 
 using LinearAlgebra
 

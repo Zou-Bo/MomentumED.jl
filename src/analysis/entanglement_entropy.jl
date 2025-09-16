@@ -1,7 +1,7 @@
 """
     entanglement_entropy.jl - Entanglement Entropy Calculations for Momentum Eigenstates
 
-This module provides minimal bipartite entanglement entropy calculations for momentum 
+This file provides minimal bipartite entanglement entropy calculations for momentum 
 eigenstates using bit position bipartitions. Implements von Neumann and Renyi 
 entropy calculations with direct computation from eigenvectors without storage.
 
@@ -10,6 +10,11 @@ Core Functions:
 - rdm_eigenvalue_small: Helper for determining smaller subsystem
 - rdm_eigenvalue: Helper for reduced density matrix eigenvalue computation
 """
+
+using LinearAlgebra
+using SparseArrays
+using KrylovKit
+
 
 """
     ED_etg_entropy(block::Vector{MBS64{bits}}, 
@@ -160,4 +165,36 @@ function rdm_eigenvalue(block::Vector{MBS64{bits}},
     end
     
     return filter(x -> x > 1e-8, eigenvals)
+end
+
+
+function schmidt_decomposition(block_basis::Vector{MBS64{bits}}, 
+                            psi::Vector{ComplexF64}, 
+                            bit_mask::MBS64{bits}) where {bits}
+    # Compute Schmidt decomposition for the given state |psi> and bit mask
+    n_bits_A = count_ones(bit_mask.n)
+    n_bits_B = bits - n_bits_A
+    
+    dim_A = 1 << n_bits_A
+    dim_B = 1 << n_bits_B
+    
+    psi_matrix = spzeros(ComplexF64, dim_A, dim_B)
+
+    for (idx, coeff) in enumerate(psi)
+        if abs(coeff) > 1e-8
+            # Extract subsystem configurations using mask .
+            config_A = (block_basis[idx].n & bit_mask.n)
+            config_B = (block_basis[idx].n & ~bit_mask.n) >> n_bits_A
+            
+            idx_A = Int(config_A) + 1  # 1-based indexing
+            idx_B = Int(config_B) + 1  # 1-based indexing
+            
+            psi_matrix[idx_A, idx_B] += coeff
+        end
+    end
+    
+    # Perform SVD on the coefficient matrix
+    U, S, Vh = svd(psi_matrix)
+    
+    return U, S, Vh
 end
