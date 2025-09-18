@@ -159,7 +159,7 @@ function EDsolve(sorted_mbs_block_list::Vector{<: MBS64},
             if dim > 2000
                 @warn "Dense diagonalization may be slow for dim=$dim. Consider using :sparse method."
             end
-            N_eigen > dim && (N_eigen = dim)
+            N > dim && (N = dim)
 
             # Convert to dense matrix and solve
             if showtime
@@ -167,9 +167,9 @@ function EDsolve(sorted_mbs_block_list::Vector{<: MBS64},
             else
                 vals, vecs = eigen(Hermitian(Matrix(H)))
             end
-            vals = vals[1:N_eigen]
-            vecs = vecs[:, 1:N_eigen]
-            vecs = [vecs[:, i] for i in 1:N_eigen]  # Convert to vector of vectors
+            vals = vals[1:N]
+            vecs = vecs[:, 1:N]
+            vecs = [vecs[:, i] for i in 1:N]  # Convert to vector of vectors
 
         end
 
