@@ -150,15 +150,13 @@ function scat_pair_group(pair_group::Vector{Tuple{Int64,Int64}}, para::EDPara;
     Nc = para.Nc
     Nk = para.Nk
     Gk1, Gk2 = para.Gk
-    frac_klist = similar(para.k_list, Float64)
-    sys_size = 1
+    frac_klist = float(para.k_list) .+ [kshift[1]; kshift[2]]  # apply kshift
+    sys_size = (Gk1 != 0 && Gk2 != 0) ? Nk : 1
     if Gk1 != 0
-        frac_klist[1, :] = para.k_list[1, :] ./ Gk1 .+ kshift[1]
-        sys_size *= Gk1
+        frac_klist[1, :] ./= Gk1
     end
     if Gk2 != 0
-        frac_klist[2, :] = para.k_list[2, :] ./ Gk2 .+ kshift[2]
-        sys_size *= Gk2
+        frac_klist[2, :] ./= Gk2
     end
 
     scattering_list = Vector{Scattering{2}}()
@@ -212,7 +210,7 @@ function scat_pair_group(pair_group::Vector{Tuple{Int64,Int64}}, para::EDPara;
                     cf1, cf2, ci1, ci2
                 )
 
-                amp = amp_direct - amp_exchange
+                amp = (amp_direct - amp_exchange) / sys_size
                 iszero(amp) || push!(scattering_list, NormalScattering(amp, f1, f2, i2, i1))
                 output && println()
             end

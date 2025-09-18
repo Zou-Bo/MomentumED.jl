@@ -9,99 +9,152 @@ invariants like Chern numbers.
 
 using LinearAlgebra
 
-"""
-    validate_berry_connection_inputs(kshift1, kshift2, ψ1, ψ2)
-
-Validate inputs for berry_connection function.
-Throws ArgumentError for invalid inputs.
-"""
-function validate_berry_connection_inputs(kshift1, kshift2, ψ1, ψ2)
-    # Check vector dimensions match
-    length(ψ1) == length(ψ2) || 
-        throw(ArgumentError("Ground state vectors must have same dimension"))
-    
-    # Check kshift dimensions
-    length(kshift1) == 2 && length(kshift2) == 2 ||
-        throw(ArgumentError("kshift must be 2D tuples"))
-    
-    # Check for zero vectors
-    norm(ψ1) > 1e-12 && norm(ψ2) > 1e-12 ||
-        throw(ArgumentError("Ground state vectors cannot be zero"))
-    
-    return true
-end
 
 """
-    ED_connection_integral(kshift1, kshift2, ψ1, ψ2, momentum_axis_angle; average_connection=false)
+    ED_connection_step(mbs_list::Vector{MBS64}, ψ_f::Vector{ComplexF64}, ψ_i::Vector{ComplexF64},
+                       shift_f::Tuple{Float64, Float64}, shift_i::Tuple{Float64, Float64},
+                       para::EDPara; wavefunction_tol::Float64=1e-8, amp_warn_tol::Float64=0.6,
+                       amp_warn::Bool=true)
 
 Compute the many-body Berry connection integral between two kshift points in momentum space.
 
 # Arguments
-- `kshift1::Tuple{Float64, Float64}`: First momentum shift point (kx1, ky1)
-- `kshift2::Tuple{Float64, Float64}`: Second momentum shift point (kx2, ky2)  
-- `ψ1::AbstractVector{<:Complex}`: Ground state eigenvector at kshift1
-- `ψ2::AbstractVector{<:Complex}`: Ground state eigenvector at kshift2
-- `momentum_axis_angle::Float64`: Angle for momentum space geometry correction
-- `average_connection::Bool`: Whether to divide by momentum space distance (default: false)
+- `mbs_list::Vector{MBS64}`: List of many-body states in this momentum block
+- `ψ_f::Vector{ComplexF64}`: Eigenvector at shift_f
+- `ψ_i::Vector{ComplexF64}`: Eigenvector at shift_i
+- `shift_f::Tuple{Float64, Float64}`: Final momentum shift
+- `shift_i::Tuple{Float64, Float64}`: Initial momentum shift
+- `para::EDPara`: ED parameters containing momentum states and system details
+
+# Keywords
+- `wavefunction_tol::Float64=1e-8`: Minimum amplitude in eigenvectors to consider
+- `amp_warn_tol::Float64=0.6`: Minimum inner product amplitude to avoid numerical instability warning
+- `amp_warn::Bool=true`: Whether to issue a warning for small inner product amplitude
 
 # Returns
-- `Float64`: Geometric phase φ = arg(⟨ψ2|ψ1⟩) if average_connection=false
-              Berry connection A = φ/||δk|| if average_connection=true
+- `Float64`: Step integral of many-body connection = arg( ⟨ψ2|ψ1⟩ )
 
-# Mathematical Framework
-Berry connection: A = ⟨ψ|i∂_k|ψ⟩ ≈ arg(⟨ψ(k+δk)|ψ(k)⟩) / ||δk||
-For small δk = kshift2 - kshift1, inner product ⟨ψ2|ψ1⟩ ≈ exp(i * A * ||δk||)
-Geometric phase: φ = arg(⟨ψ2|ψ1⟩)
-
-When average_connection=true, returns the Berry connection (phase divided by distance).
-When average_connection=false, returns just the geometric phase.
-
-# Examples
-```julia
-# Calculate geometric phase between two close kshift points
-kshift1 = (0.0, 0.0)
-kshift2 = (0.01, 0.0)
-ψ1 = ground_state_at_kshift1  # Complex vector
-ψ2 = ground_state_at_kshift2  # Complex vector
-angle = π/2  # Orthogonal momentum axes
-
-phase = ED_connection_integral(kshift1, kshift2, ψ1, ψ2, angle)
-println("Geometric phase: ", phase)
-
-# Calculate Berry connection (average connection)
-berry_conn = ED_connection_integral(kshift1, kshift2, ψ1, ψ2, angle; average_connection=true)
-println("Berry connection: ", berry_conn)
-```
+# Description
+The many-body Berry connection step integral is computed as the phase of the inner product
+For small twist difference δshift = shift_f - shift_i, inner product ⟨ψ2|ψ1⟩ ≈ exp(i * ∫ A ⋅ δshift)
+Step integral = arg(⟨ψ2|ψ1⟩)
 """
-function ED_connection_integral(kshift1, kshift2, ψ1, ψ2, momentum_axis_angle; average_connection=false)
-    # Validate inputs
-    validate_berry_connection_inputs(kshift1, kshift2, ψ1, ψ2)
-    
-    # Compute complex inner product ⟨ψ2|ψ1⟩ using Julia's built-in dot
-    inner_prod = dot(ψ2, ψ1)
-    
-    # Extract geometric phase using angle() function (equivalent to arg)
-    geometric_phase = angle(inner_prod)
-    
-    if average_connection
-        # Calculate momentum space distance accounting for non-orthogonal coordinates
-        δk = kshift2 .- kshift1
-        # For non-orthogonal momentum space with angle θ between axes:
-        # d² = δk₁² + δk₂² + 2*δk₁*δk₂*cos(θ) 
-        # This is the proper metric tensor approach
-        distance = sqrt(δk[1]^2 + δk[2]^2 + 2*δk[1]*δk[2]*cos(momentum_axis_angle))
-        
-        # Handle numerical stability for very close points
-        if distance < 1e-12
-            @warn "kshift points very close, numerical instability possible"
-            distance = 1e-12
-        end
-        
-        # Berry connection A = φ / ||δk||
-        berry_conn = geometric_phase / distance
-        return berry_conn
-    else
-        # Return just the geometric phase
-        return geometric_phase
+function ED_connection_step(mbs_list::Vector{<: MBS64}, 
+    ψ_f::Vector{ComplexF64}, ψ_i::Vector{ComplexF64},
+    shift_f::Tuple{Float64, Float64}, shift_i::Tuple{Float64, Float64},
+    para::EDPara;
+    wavefunction_tol::Float64 = 1e-8,
+    print_amp::Bool = false,
+    amp_warn_tol::Float64 = 0.6, amp_warn::Bool = true
+)::Float64
+
+    @assert length(ψ_f) == length(ψ_i) == length(mbs_list) "Length of basis and eigenvectors must match."
+
+    Nk = para.Nk
+    Gk1, Gk2 = para.Gk
+    frac_ki = float(para.k_list) .+ collect(shift_i)
+    frac_kf = float(para.k_list) .+ collect(shift_f)
+    if Gk1 != 0
+        frac_ki[1, :] ./= Gk1
+        frac_kf[1, :] ./= Gk1
     end
+    if Gk2 != 0
+        frac_ki[2, :] ./= Gk2
+        frac_kf[2, :] ./= Gk2
+    end
+    
+
+    inner_prod = 0.0 + 0.0im  # many-body connection step integral
+    for x in eachindex(mbs_list)
+        if abs(ψ_i[x]) > wavefunction_tol && abs(ψ_f[x]) > wavefunction_tol
+            
+            coeffi = ψ_f[x]' * ψ_i[x]
+            
+            bc = sum(occ_list(mbs_list[x]) ) do i
+                k, c = fldmod1(i, Nk)
+                ki = Tuple(frac_ki[:, k])
+                kf = Tuple(frac_kf[:, k])
+                para.FF_inf_angle(kf, ki, c)
+            end
+
+            inner_prod += coeffi * cis(bc)
+        end
+    end
+
+    if print_amp
+        println("Inner product: amp = $(abs(inner_prod)), phase = $(angle(inner_prod))")
+    end
+    
+    if amp_warn && abs(inner_prod) < amp_warn_tol
+        @warn "Small inner product amplitude: $(abs(inner_prod))"
+    end
+    # many-body connection step integral is the phase of the inner product
+    mbc = angle(inner_prod)
+
+    return mbc
 end
+
+
+
+function ED_NAconnection_step(mbs_list::Vector{<: MBS64}, 
+    ψ_f::Matrix{ComplexF64}, ψ_i::Matrix{ComplexF64},
+    shift_f::Tuple{Float64, Float64}, shift_i::Tuple{Float64, Float64},
+    para::EDPara;
+    wavefunction_tol::Float64 = 1e-8,
+    print_amp::Bool = false,
+    amp_warn_tol::Float64 = 0.7, amp_warn::Bool = true
+)::Matrix{ComplexF64}
+
+    @assert size(ψ_f, 1) == size(ψ_i, 1) == length(mbs_list) "Length of basis and eigenvectors must match."
+    @assert size(ψ_f, 2) == size(ψ_i, 2) "Number of states must match in non-Abelian connection"
+
+    g = size(ψ_f, 2)  # degeneracy
+    Nk = para.Nk
+    Gk1, Gk2 = para.Gk
+    frac_ki = float(para.k_list) .+ collect(shift_i)
+    frac_kf = float(para.k_list) .+ collect(shift_f)
+    if Gk1 != 0
+        frac_ki[1, :] ./= Gk1
+        frac_kf[1, :] ./= Gk1
+    end
+    if Gk2 != 0
+        frac_ki[2, :] ./= Gk2
+        frac_kf[2, :] ./= Gk2
+    end
+    
+
+    inner_prod = zeros(ComplexF64, g, g)  # many-body connection step integral
+    coeffi = similar(inner_prod)
+    for x in eachindex(mbs_list)
+        if norm(ψ_i[x, :]) > wavefunction_tol && norm(ψ_f[x, :]) > wavefunction_tol
+
+            coeffi .= ψ_f[x:x, :]' * ψ_i[x:x, :]
+
+            bc = sum(occ_list(mbs_list[x]) ) do i
+                k, c = fldmod1(i, Nk)
+                ki = Tuple(frac_ki[:, k])
+                kf = Tuple(frac_kf[:, k])
+                para.FF_inf_angle(kf, ki, c)
+            end
+
+            inner_prod += coeffi * cis(bc)
+        end
+    end
+
+    amp = opnorm(inner_prod)
+
+    s = -im * log(inner_prod)
+    mbc = hermitianpart(s)
+
+
+    if print_amp
+        println("Inner product: amp = $amp, phase = $(eigvals(mbc))")
+    end
+    
+    if amp_warn && amp < amp_warn_tol
+        @warn "Small inner product amplitude: $amp"
+    end
+
+    return mbc
+end
+

@@ -15,7 +15,9 @@ export ED_sortedScatteringList_twobody
 # main solving function
 export EDsolve
 # analysis
-export ED_onebody_rdm, ED_etg_entropy, ED_connection_integral
+export ED_onebody_rdm
+# export ED_entanglement_entropy
+export ED_connection_step, ED_NAconnection_step
 
 using LinearAlgebra
 using SparseArrays
@@ -42,21 +44,23 @@ include("method/sparse_matrix.jl")
 Solve the sparse Hamiltonian matrix using KrylovKit's eigsolve function for the lowest n eigenvalues and eigenvectors.
 
 # Arguments
-- `H::SparseMatrixCSC{ComplexF64, Int64}`: Sparse Hamiltonian matrix to diagonalize
+- `H::SparseMatrixCSC{Complex{eltype}, idtype}`: Sparse Hamiltonian matrix to diagonalize
 - `N_eigen::Int64=6`: Number of eigenvalues/eigenvectors to compute (default: 6)
 
 # Keywords
-- `converge_warning::Bool=false`: Whether to show a warning if the solver does not converge
+- `vec0::Vector{Complex{eltype}}=rand(Complex{eltype}, H.m)`: Initial guess vector for Krylov iteration
+- `ishermitian::Bool=true`: Whether the matrix is Hermitian (default: true)
 - `krylovkit_kwargs...`: Additional keyword arguments to pass to KrylovKit.eigsolve
 
 # Returns
-- `vals::Vector{Float64}`: Eigenvalues (energies) in ascending order
-- `vecs::Vector{Vector{ComplexF64}}`: Corresponding eigenvectors
+- `vals::Vector{eltype}`: Eigenvalues (energies) in ascending order
+- `vecs::Vector{Vector{Complex{eltype}}}`: Corresponding eigenvectors
+- `info`: Convergence information from KrylovKit
 
 # Examples
 ```julia
 # Solve for 3 lowest eigenstates
-vals, vecs = matrix_solve(H_matrix, 3)
+vals, vecs, info = matrix_solve(H_matrix, 3)
 println("Ground state energy: ", vals[1])
 ```
 
@@ -68,22 +72,14 @@ println("Ground state energy: ", vals[1])
 - For better control over convergence, consider using KrylovKit directly
 """
 function matrix_solve(
-    H::SparseMatrixCSC{ComplexF64, Int64},
-    N_eigen::Int64=6;
-    converge_warning::Bool=false, krylovkit_kwargs...
-)::Tuple{Vector{Float64}, Vector{Vector{ComplexF64}}}
-    dim = H.m
-    vec0 = rand(ComplexF64, dim)
-    N_eigen > dim && (N_eigen = dim)
-    vals, vecs, info = eigsolve(H, vec0, N_eigen, :SR; ishermitian=true, krylovkit_kwargs...)
-    # Handle convergence information from KrylovKit
-    if !(info.converged == true || info.converged == 1)
-        if converge_warning
-            @warn "Eigensolver did not converge. Residual norm: $(info.normres)"
-        end
-    end
+    H::SparseMatrixCSC{Complex{eltype}}, N_eigen::Int64;
+    vec0::Vector{Complex{eltype}} = rand(Complex{eltype}, H.m),
+    ishermitian = true, krylovkit_kwargs...
+)::Tuple{Vector{eltype}, Vector{Vector{Complex{eltype}}}, Any} where {eltype<:AbstractFloat}
 
-    return view(vals, 1:N_eigen), view(vecs, 1:N_eigen)
+    N_eigen = min(N_eigen, H.m)
+    vals, vecs, info = eigsolve(H, vec0, N_eigen, :SR; ishermitian=ishermitian, krylovkit_kwargs...)
+    return view(vals, 1:N_eigen), view(vecs, 1:N_eigen), info
 end
 
 
@@ -98,18 +94,14 @@ Main interface function for exact diagonalization of momentum-conserved quantum 
 Constructs the sparse Hamiltonian matrix from scattering lists and diagonalizes it.
 
 # Arguments
-- `sorted_mbs_block_list::Vector{MBS64{bits}}`: Sorted list of many-body states in the momentum block
-- `sorted_onebody_scat_list::Vector{Scattering{1}}`: Sorted one-body scattering terms
-- `sorted_twobody_scat_list::Vector{Scattering{2}}`: Sorted two-body scattering terms  
+- `sorted_mbs_block_list::Vector{<: MBS64}`: Sorted list of many-body states in the momentum block
+- `sorted_scat_list::Vector{<: Scattering}`: Sorted scattering terms (one-body, two-body, etc.)
 - `N_eigen::Int64=6`: Number of eigenvalues/eigenvectors to compute (default: 6)
 
 # Keywords
 - `showtime::Bool=false`: Whether to print timing information for matrix construction and diagonalization
-- `converge_warning::Bool=false`: Whether to show a warning if the eigensolver does not converge
 - `krylovkit_kwargs...`: Additional keyword arguments to pass to KrylovKit.eigsolve
 
-# Type Parameters
-- `bits`: Number of bits in MBS64 type (determines system size)
 
 # Returns
 - `vals::Vector{Float64}`: Eigenvalues (energies) in ascending order
@@ -127,23 +119,13 @@ scattering2 = ED_sortedScatteringList_twobody(para)
 energies, wavefunctions = EDsolve(blocks[1], scattering1, scattering2, 2, 1)
 println("Ground state energy: ", energies[1])
 ```
-
-# Physics Notes
-- Conserves total momentum through block diagonalization
-- Uses scattering formalism for efficient Hamiltonian construction
-- Suitable for both real and complex Hamiltonian matrices
-- Automatically handles Hermitian symmetry optimization
-
-# Performance
-- Memory efficient: Uses sparse matrix storage
-- Computationally efficient: Krylov subspace methods for large sparse systems
-- Typical use case: Systems with 10-20 single-particle orbitals
 """
-function EDsolve(sorted_mbs_block_list::Vector{MBS64{bits}}, 
-    sorted_onebody_scat_list::Vector{Scattering{1}},
-    sorted_twobody_scat_list::Vector{Scattering{2}}, 
-    N_eigen::Int64=6; showtime = false, converge_warning::Bool=false,
-    method = :sparse, krylovkit_kwargs...) where {bits}
+function EDsolve(sorted_mbs_block_list::Vector{<: MBS64}, 
+    sorted_scat_lists::Vector{<: Scattering}...;
+    N::Int64=6, showtime = false, method = :sparse, 
+    element_type::Type = Float64, index_type::Type = Int64, 
+    vec0::Vector{<: Complex} = rand(Complex{element_type}, length(sorted_mbs_block_list)),
+    krylovkit_kwargs...)
 
     if method == :map
 
@@ -153,12 +135,12 @@ function EDsolve(sorted_mbs_block_list::Vector{MBS64{bits}},
 
         # Construct sparse Hamiltonian matrix from scattering terms
         if showtime
-            @time H = HmltMatrix_threaded(sorted_mbs_block_list, 
-                sorted_onebody_scat_list, sorted_twobody_scat_list;
+            @time H = HmltMatrix_threaded(sorted_mbs_block_list, sorted_scat_lists...;
+                element_type = element_type, index_type = index_type
             )
         else
-            H = HmltMatrix_threaded(sorted_mbs_block_list,
-                sorted_onebody_scat_list, sorted_twobody_scat_list;
+            H = HmltMatrix_threaded(sorted_mbs_block_list, sorted_scat_lists...;
+                element_type = element_type, index_type = index_type
             )
         end
 
@@ -166,9 +148,9 @@ function EDsolve(sorted_mbs_block_list::Vector{MBS64{bits}},
 
             # Solve the eigenvalue problem
             if showtime
-                @time vals, vecs = matrix_solve(H, N_eigen; converge_warning = converge_warning, krylovkit_kwargs...)
+                @time vals, vecs, _ = matrix_solve(H, N; vec0 = vec0, krylovkit_kwargs...)
             else
-                vals, vecs = matrix_solve(H, N_eigen; converge_warning = converge_warning, krylovkit_kwargs...)
+                vals, vecs, _ = matrix_solve(H, N; vec0 = vec0, krylovkit_kwargs...)
             end
 
         elseif method == :dense

@@ -20,6 +20,7 @@ Parameters for momentum-conserved exact diagonalization calculations.
 - `Nc::Int64`: Total number of components
 - `H_onebody::Array{ComplexF64,4}`: One-body Hamiltonian terms
 - `V_int::Function`: Interaction potential function
+- `FF_inf_angle::Function`: Berry connection step integral, argument of infinitesimal δk form factor
 
 # Orbital Indexing
 The orbital index formula is: i = i_k + Nk * (i_ch-1) + (Nk * Nc_hopping) * (i_cc-1)
@@ -28,7 +29,8 @@ or i = i_k + Nk * (i_c-1), where i_c = i_ch + Nc_hopping * (i_cc-1)
 # Validation
 - `Nc > 0`: Number of components must be positive
 - `Nk*Nc <= 64`: Hilbert space dimension must not exceed 64 bits for MBS64 compatibility
-- `V_int` function must have correct signature: (kf1, kf2, ki1, ki2, cf1, cf2, ci1, ci2) -> ComplexF64
+- `V_int` function must have correct signature: (kf1, kf2, ki2, ki1, cf1, cf2, ci2, ci1) -> ComplexF64
+- `FF_inf_angle` function must have correct signature: (k_f, k_i, c) -> Float64
 """
 mutable struct EDPara
     # momemta are in integers
@@ -43,19 +45,22 @@ mutable struct EDPara
     Nc_conserve::Int64  # number of components with conserved quantum numbers
     Nc::Int64
 
-    # (to be fill later by user)
     H_onebody::Array{ComplexF64,4} 
     V_int::Function
+    FF_inf_angle::Function
 
     """
     Constructor for EDPara with keyword arguments and validation.
     """
-    function EDPara(; Gk::Tuple{Int64, Int64}=(0, 0), 
-                     k_list::Matrix{Int64},
-                     Nc_hopping::Int64=1,
-                     Nc_conserve::Int64=1,
-                     H_onebody::Array{ComplexF64,4}=zeros(ComplexF64, Nc_hopping, Nc_hopping, Nc_conserve, size(k_list, 2)),
-                     V_int::Function)
+    function EDPara(; 
+        Gk::Tuple{Int64, Int64} = (0, 0), 
+        k_list::Matrix{Int64},
+        Nc_hopping::Int64 = 1,
+        Nc_conserve::Int64 = 1,
+        H_onebody::Array{ComplexF64,4} = zeros(ComplexF64, Nc_hopping, Nc_hopping, Nc_conserve, size(k_list, 2)),
+        V_int::Function = (kf1, kf2, ki1, ki2, cf1, cf2, ci1, ci2) -> 0.0 + 0.0im,
+        FF_inf_angle::Function = (k_f, k_i, c) -> 0.0
+    )
 
         # Calculate derived fields
         Nk = size(k_list, 2)
@@ -65,12 +70,17 @@ mutable struct EDPara
         @assert Nc > 0 "Number of components must be positive"
         @assert Nk*Nc <= 64 "The Hilbert space dimension must not exceed 64 bits."
         
-        # Validate V_int function signature - must accept new Tuple{Float64,Float64} momentum format
+        # Validate V_int function signature - must accept Tuple{Float64,Float64} momentum format
         if !hasmethod(V_int, Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64},Tuple{Float64,Float64},Tuple{Float64,Float64},Int,Int,Int,Int})
             throw(AssertionError("V_int function must accept 8 arguments with new kshift format: (kf1::Tuple{Float64,Float64}, kf2::Tuple{Float64,Float64}, ki1::Tuple{Float64,Float64}, ki2::Tuple{Float64,Float64}, cf1::Int, cf2::Int, ci1::Int, ci2::Int)"))
         end
 
-        new(Gk, k_list, Nk, Nc_hopping, Nc_conserve, Nc, H_onebody, V_int)
+        # Validate FF_inf_angle function signature - must accept Tuple{Float64,Float64} momentum format
+        if !hasmethod(FF_inf_angle, Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64},Int})
+            throw(AssertionError("FF_inf_angle function must accept 3 arguments: (k_f::Tuple{Float64,Float64}, k_i::Tuple{Float64,Float64}, c::Int)"))
+        end
+
+        new(Gk, k_list, Nk, Nc_hopping, Nc_conserve, Nc, H_onebody, V_int, FF_inf_angle)
     end
 end
 

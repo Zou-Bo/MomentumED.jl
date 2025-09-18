@@ -23,82 +23,6 @@ function my_searchsortedfirst(list, i)
     end
 end
 
-# """
-#     HmltMatrix(sorted_mbs_block_list, sorted_onebody_scat_list, sorted_twobody_scat_list)
-
-# Construct sparse Hamiltonian matrix from scattering lists and momentum block basis.
-
-# This function converts scattering lists into a sparse matrix Hamiltonian by applying
-# scattering terms to basis states and calculating matrix elements. Handles both one-body
-# and two-body terms with proper Hermitian construction.
-
-# # Arguments
-# - `sorted_mbs_block_list::Vector{MBS64{bits}}`: Sorted basis states for momentum block
-# - `sorted_onebody_scat_list::Vector{Scattering{1}}`: One-body scattering terms
-# - `sorted_twobody_scat_list::Vector{Scattering{2}}`: Two-body scattering terms
-
-# # Returns  
-# - `SparseMatrixCSC{ComplexF64, Int64}`: Sparse Hamiltonian matrix (Hermitian)
-
-# # Notes
-# Only the upper triangular part is stored explicitly (H[i,j] with i <= j), and the
-# Hermitian form is returned. This is essential for momentum-conserved diagonalization.
-# """
-# function HmltMatrix(sorted_mbs_block_list::Vector{MBS64{bits}}, 
-#     sorted_onebody_scat_list::Vector{Scattering{1}},
-#     sorted_twobody_scat_list::Vector{Scattering{2}},
-# )::SparseMatrixCSC{ComplexF64, Int64} where {bits}
-
-#     size = length(sorted_mbs_block_list)
-#     H = ExtendableSparseMatrix(ComplexF64, size, size);
-
-#     for mbsj in eachindex(sorted_mbs_block_list)
-#         mbs_in = sorted_mbs_block_list[mbsj]
-
-#         # Two-body scattering terms
-#         for scat in sorted_twobody_scat_list
-#             if isoccupied(mbs_in, scat.in...)
-#                 if scat.in == scat.out
-#                     updateindex!(H, +, scat.Amp, mbsj, mbsj)
-#                 else
-#                     mbs_mid = empty!(mbs_in, scat.in...; check=false)
-#                     if isempty(mbs_mid, scat.out...)
-#                         mbs_out = occupy!(mbs_mid, scat.out...; check=false)
-#                         mbsi = my_searchsortedfirst(sorted_mbs_block_list, mbs_out)
-#                         @assert mbsi != 0 "H is not momentum-conserving."
-#                         if iseven(occ_num_between(mbs_mid, scat.in...) + occ_num_between(mbs_mid, scat.out...))
-#                             updateindex!(H, +, scat.Amp, mbsi, mbsj)
-#                         else
-#                             updateindex!(H, +, -scat.Amp, mbsi, mbsj)
-#                         end
-#                     end
-#                 end
-#             end
-#         end
-        
-#         # One-body scattering terms
-#         for scat in sorted_onebody_scat_list
-#             if isoccupied(mbs_in, scat.in...)
-#                 if scat.in == scat.out
-#                     updateindex!(H, +, scat.Amp, mbsj, mbsj)
-#                 else
-#                     mbs_mid = empty!(mbs_in, scat.in...; check=false)
-#                     if isempty(mbs_mid, scat.out...)
-#                         mbs_out = occupy!(mbs_mid, scat.out...; check=false)
-#                         mbsi = my_searchsortedfirst(sorted_mbs_block_list, mbs_out)
-#                         @assert mbsi != 0 "H is not momentum-conserving."
-#                         updateindex!(H, +, scat.Amp, mbsi, mbsj)
-#                     end
-#                 end
-#             end
-#         end
-#     end
-
-#     return sparse(Hermitian(H, :U))
-# end
-
-
-
 
 """
     create_state_mapping(sorted_mbs_block_list)
@@ -130,88 +54,66 @@ for parallel matrix construction and returns a standard SparseMatrixCSC instead 
 ExtendableSparseMatrix.
 
 # Arguments
-- `sorted_mbs_block_list::Vector{MBS64{bits}}`: Sorted basis states for momentum block
-- `sorted_onebody_scat_list::Vector{Scattering{1}}`: One-body scattering terms
-- `sorted_twobody_scat_list::Vector{Scattering{2}}`: Two-body scattering terms
+- `sorted_mbs_block_list::Vector{<: MBS64}`: Sorted basis states for momentum block
+- `sorted_scat_lists::Vector{<: Scattering}`: lists of scattering terms (one-body, two-body, etc.)
+
+# Keywords
+- `element_type::Type=Float64`: Element type of the sparse matrix (Float64, Float32, Float16)
+- `index_type::Type=Int64`: Index type of the sparse matrix (Int64, Int32, Int16, Int8)
 
 # Returns  
-- `SparseMatrixCSC{ComplexF64}`: Sparse Hamiltonian matrix (Hermitian)
+- `SparseMatrixCSC`: Sparse Hamiltonian matrix (Hermitian)
 
 # Notes
 Uses COO format construction with thread-local storage for better parallel performance.
 Provides 4-8x speedup for medium to large systems compared to the basic version.
 """
 function HmltMatrix_threaded(
-    sorted_mbs_block_list::Vector{MBS64{bits}}, 
-    sorted_onebody_scat_list::Vector{Scattering{1}},
-    sorted_twobody_scat_list::Vector{Scattering{2}},
-    # multi_thread::Bool=true,
-)::SparseMatrixCSC{ComplexF64, Int64} where {bits}
+    sorted_mbs_block_list::Vector{<: MBS64}, 
+    sorted_scat_lists::Vector{<: Scattering}...;
+    element_type::Type = Float64, index_type::Type = Int64,
+)::SparseMatrixCSC
+
+    @assert element_type ∈ (Float64, Float32, Float16) "Use element_type Float64, Float32, or Float16."
+    @assert index_type ∈ (Int64, Int32, Int16, Int8) "Use index_type Int64, Int32, Int16, or Int8."
 
     n_states = length(sorted_mbs_block_list)
+    @assert n_states <= typemax(index_type) "Hilbert space too large for $index_type."
     # state_mapping = create_state_mapping(sorted_mbs_block_list)
     
-    # if !multi_thread
-    #     return HmltMatrix(sorted_mbs_block_list, sorted_onebody_scat_list, sorted_twobody_scat_list)
-    # end
     # Thread-local storage for COO format
     n_threads = Threads.nthreads()
-    thread_I = [Vector{Int}() for _ in 1:n_threads]
-    thread_J = [Vector{Int}() for _ in 1:n_threads]
-    thread_V = [Vector{ComplexF64}() for _ in 1:n_threads]
+    thread_I = [Vector{index_type}() for _ in 1:n_threads]
+    thread_J = [Vector{index_type}() for _ in 1:n_threads]
+    thread_V = [Vector{Complex{element_type}}() for _ in 1:n_threads]
     
     # Parallel construction over columns
     Threads.@threads for j in 1:n_states
         tid = Threads.threadid()
         mbs_in = sorted_mbs_block_list[j]
         
-        # Two-body scattering terms
-        for scat in sorted_twobody_scat_list
-            if isoccupied(mbs_in, scat.in...)
-                if scat.in == scat.out
-                    # Diagonal term
-                    push!(thread_I[tid], j)
-                    push!(thread_J[tid], j)
-                    push!(thread_V[tid], scat.Amp)
-                else
-                    # Off-diagonal term
-                    mbs_mid = empty!(mbs_in, scat.in...; check=false)
-                    if isempty(mbs_mid, scat.out...)
-                        mbs_out = occupy!(mbs_mid, scat.out...; check=false)
-                        # i = get(state_mapping, mbs_out.n, 0)
-                        i = my_searchsortedfirst(sorted_mbs_block_list, mbs_out)
-                        @assert i != 0 "H is not momentum- or component-conserving."
-
-                        sign_occ = (-1)^(scat_occ_number(mbs_mid, scat.in) + scat_occ_number(mbs_mid, scat.out))
-                        push!(thread_I[tid], i)
+        for scat_list in sorted_scat_lists
+            for scat in scat_list
+                if isoccupied(mbs_in, scat.in...)
+                    if scat.in == scat.out
+                        # Diagonal term
+                        push!(thread_I[tid], j)
                         push!(thread_J[tid], j)
-                        push!(thread_V[tid], sign_occ * scat.Amp)
-                    end
-                end
-            end
-        end
-        
-        # One-body scattering terms
-        for scat in sorted_onebody_scat_list
-            if isoccupied(mbs_in, scat.in...)
-                if scat.in == scat.out
-                    # Diagonal term
-                    push!(thread_I[tid], j)
-                    push!(thread_J[tid], j)
-                    push!(thread_V[tid], scat.Amp)
-                else
-                    # Off-diagonal term
-                    mbs_mid = empty!(mbs_in, scat.in...; check=false)
-                    if isempty(mbs_mid, scat.out...)
-                        mbs_out = occupy!(mbs_mid, scat.out...; check=false)
-                        # i = get(state_mapping, mbs_out.n, 0)
-                        i = my_searchsortedfirst(sorted_mbs_block_list, mbs_out)
-                        @assert i != 0 "H is not momentum- or component-conserving."
+                        push!(thread_V[tid], scat.Amp)
+                    else
+                        # Off-diagonal term
+                        mbs_mid = empty!(mbs_in, scat.in...; check=false)
+                        if isempty(mbs_mid, scat.out...)
+                            mbs_out = occupy!(mbs_mid, scat.out...; check=false)
+                            # i = get(state_mapping, mbs_out.n, 0)
+                            i = my_searchsortedfirst(sorted_mbs_block_list, mbs_out)
+                            @assert i != 0 "H is not momentum- or component-conserving."
 
-                        sign_occ = (-1)^(scat_occ_number(mbs_mid, scat.in) + scat_occ_number(mbs_mid, scat.out))
-                        push!(thread_I[tid], i)
-                        push!(thread_J[tid], j)
-                        push!(thread_V[tid], sign_occ * scat.Amp)
+                            sign_occ = (-1)^(scat_occ_number(mbs_mid, scat.in) + scat_occ_number(mbs_mid, scat.out))
+                            push!(thread_I[tid], i)
+                            push!(thread_J[tid], j)
+                            push!(thread_V[tid], sign_occ * scat.Amp)
+                        end
                     end
                 end
             end
@@ -219,21 +121,9 @@ function HmltMatrix_threaded(
     end
     
     # Merge thread-local results
-    total_entries = sum(length.(thread_I))
-    I = Vector{Int}(undef, total_entries)
-    J = Vector{Int}(undef, total_entries)
-    V = Vector{ComplexF64}(undef, total_entries)
-    
-    offset = 0
-    for tid in 1:n_threads
-        n = length(thread_I[tid])
-        if n > 0
-            I[offset+1:offset+n] .= thread_I[tid]
-            J[offset+1:offset+n] .= thread_J[tid]
-            V[offset+1:offset+n] .= thread_V[tid]
-            offset += n
-        end
-    end
+    I = reduce(vcat, thread_I)
+    J = reduce(vcat, thread_J)
+    V = reduce(vcat, thread_V)
     
     # Convert to sparse matrix (Hermitian)
     H = sparse(I, J, V, n_states, n_states)
