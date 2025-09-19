@@ -71,7 +71,7 @@ function ED_connection_step(mbs_list::Vector{<: MBS64},
             coeffi = ψ_f[x]' * ψ_i[x]
             
             bc = sum(occ_list(mbs_list[x]) ) do i
-                k, c = fldmod1(i, Nk)
+                c, k = fldmod1(i, Nk)
                 ki = Tuple(frac_ki[:, k])
                 kf = Tuple(frac_kf[:, k])
                 para.FF_inf_angle(kf, ki, c)
@@ -131,7 +131,7 @@ function ED_NAconnection_step(mbs_list::Vector{<: MBS64},
             coeffi .= ψ_f[x:x, :]' * ψ_i[x:x, :]
 
             bc = sum(occ_list(mbs_list[x]) ) do i
-                k, c = fldmod1(i, Nk)
+                c, k = fldmod1(i, Nk)
                 ki = Tuple(frac_ki[:, k])
                 kf = Tuple(frac_kf[:, k])
                 para.FF_inf_angle(kf, ki, c)
