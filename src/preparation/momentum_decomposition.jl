@@ -165,6 +165,8 @@ function ED_momentum_block_division(para::EDPara, mbs_list::Vector{MBS64{bits}};
         iszero(Gk[2]) || (k2 = mod(k2, Gk[2]))
         momentum_list[i] = (k1, k2)
     end
+    unique!(momentum_list)
+    #=
     listmask = trues(length(momentum_list))
     for i in 1:length(momentum_list)-1, j in i+1:length(momentum_list)
         if momentum_list[i] == momentum_list[j]
@@ -172,6 +174,7 @@ function ED_momentum_block_division(para::EDPara, mbs_list::Vector{MBS64{bits}};
         end
     end
     momentum_list = momentum_list[listmask]
+    =#
 
     # Adjust k1range and k2range if they are too large
     k1range = minmax(k1range...)
