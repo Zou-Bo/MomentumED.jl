@@ -71,8 +71,10 @@ mutable struct EDPara
         @assert Nk*Nc <= 64 "The Hilbert space dimension must not exceed 64 bits."
         
         # Validate V_int function signature - must accept Tuple{Float64,Float64} momentum format
-        if !hasmethod(V_int, Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64},Tuple{Float64,Float64},Tuple{Float64,Float64},Int,Int,Int,Int})
-            throw(AssertionError("V_int function must accept 8 arguments with new kshift format: (kf1::Tuple{Float64,Float64}, kf2::Tuple{Float64,Float64}, ki1::Tuple{Float64,Float64}, ki2::Tuple{Float64,Float64}, cf1::Int, cf2::Int, ci1::Int, ci2::Int)"))
+        if !hasmethod(V_int, Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64},Tuple{Float64,Float64},Tuple{Float64,Float64},Int64,Int64,Int64,Int64})
+            if !hasmethod(V_int, Int64,Int64,Int64,Int64,Int64,Int64,Int64,Int64)
+                throw(AssertionError("V_int function must accept 8 arguments: \n either (kf1::Tuple{Float64,Float64}, kf2::Tuple{Float64,Float64}, ki1::Tuple{Float64,Float64}, ki2::Tuple{Float64,Float64}, cf1::Int64, cf2::Int64, ci1::Int64, ci2::Int64) \n or (kf1::Int64, kf2::Int64, ki1::Int64, ki2::Int64, cf1::Int64, cf2::Int64, ci1::Int64, ci2::Int64)"))
+            end
         end
 
         # Validate FF_inf_angle function signature - must accept Tuple{Float64,Float64} momentum format
