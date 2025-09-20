@@ -20,6 +20,7 @@ Parameters for momentum-conserved exact diagonalization calculations.
 - `Nc::Int64`: Total number of components
 - `H_onebody::Array{ComplexF64,4}`: One-body Hamiltonian terms
 - `V_int::Function`: Interaction potential function
+- `momentum_coordinate::Bool`: The V_int function use coordinate or index format for input momentum 
 - `FF_inf_angle::Function`: Berry connection step integral, argument of infinitesimal δk form factor
 
 # Orbital Indexing
@@ -47,6 +48,7 @@ mutable struct EDPara
 
     H_onebody::Array{ComplexF64,4} 
     V_int::Function
+    momentum_coordinate::Bool
     FF_inf_angle::Function
 
     """
@@ -65,24 +67,48 @@ mutable struct EDPara
         # Calculate derived fields
         Nk = size(k_list, 2)
         Nc = Nc_conserve * Nc_hopping
+        momentum_coordinate = true
         
         # Validation
         @assert Nc > 0 "Number of components must be positive"
         @assert Nk*Nc <= 64 "The Hilbert space dimension must not exceed 64 bits."
         
-        # Validate V_int function signature - must accept Tuple{Float64,Float64} momentum format
-        if !hasmethod(V_int, Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64},Tuple{Float64,Float64},Tuple{Float64,Float64},Int64,Int64,Int64,Int64})
-            if !hasmethod(V_int, Int64,Int64,Int64,Int64,Int64,Int64,Int64,Int64)
-                throw(AssertionError("V_int function must accept 8 arguments: \n either (kf1::Tuple{Float64,Float64}, kf2::Tuple{Float64,Float64}, ki1::Tuple{Float64,Float64}, ki2::Tuple{Float64,Float64}, cf1::Int64, cf2::Int64, ci1::Int64, ci2::Int64) \n or (kf1::Int64, kf2::Int64, ki1::Int64, ki2::Int64, cf1::Int64, cf2::Int64, ci1::Int64, ci2::Int64)"))
+        # Validate V_int function signature - accept Tuple{Float64,Float64} or Int64 momentum format
+        try
+            x = V_int((0.0,0.0), (0.0,0.0), (0.0,0.0), (0.0,0.0), 1, 1, 1, 1)
+            @assert x isa ComplexF64
+        catch
+            momentum_coordinate = false
+            try
+                x = V_int(1, 1, 1, 1, 1, 1, 1, 1)
+                @assert x isa ComplexF64
+            catch
+                throw(AssertionError("""
+                V_int function must accept 8 arguments:
+                    either (kf1::Tuple{Float64,Float64}, kf2::Tuple{Float64,Float64}, ki1::Tuple{Float64,Float64}, ki2::Tuple{Float64,Float64}, cf1::Int64, cf2::Int64, ci1::Int64, ci2::Int64)
+                    or (kf1::Int64, kf2::Int64, ki1::Int64, ki2::Int64, cf1::Int64, cf2::Int64, ci1::Int64, ci2::Int64)"));
+                and return ComplexF64.
+                Current function fails to give ComplexF64 V_int((0.0,0.0), (0.0,0.0), (0.0,0.0), (0.0,0.0), 1, 1, 1, 1) or V_int(1, 1, 1, 1, 1, 1, 1, 1)
+                """))
             end
         end
 
+
         # Validate FF_inf_angle function signature - must accept Tuple{Float64,Float64} momentum format
-        if !hasmethod(FF_inf_angle, Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64},Int})
-            throw(AssertionError("FF_inf_angle function must accept 3 arguments: (k_f::Tuple{Float64,Float64}, k_i::Tuple{Float64,Float64}, c::Int)"))
+        if momentum_coordinate
+            try
+                x = FF_inf_angle((0.0,0.0), (0.0,0.0), 1)
+                @assert x isa Float64
+            catch
+                throw(AssertionError("""
+                FF_inf_angle function must accept 3 arguments: (k_f::Tuple{Float64,Float64}, k_i::Tuple{Float64,Float64}, c::Int),
+                and return Float64.
+                Current function fails to give Float64 FF_inf_angle((0.0,0.0), (0.0,0.0), 1)
+                """))
+            end
         end
 
-        new(Gk, k_list, Nk, Nc_hopping, Nc_conserve, Nc, H_onebody, V_int, FF_inf_angle)
+        new(Gk, k_list, Nk, Nc_hopping, Nc_conserve, Nc, H_onebody, V_int, momentum_coordinate, FF_inf_angle)
     end
 end
 

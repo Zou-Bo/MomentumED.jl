@@ -273,6 +273,7 @@ function scat_pair_group_index(pair_group::Vector{Tuple{Int64,Int64}}, para::EDP
     
     Nc = para.Nc
     Nk = para.Nk
+    Gk1, Gk2 = para.Gk
     sys_size = (Gk1 != 0 && Gk2 != 0) ? Nk : 1
 
 
@@ -373,18 +374,17 @@ function ED_sortedScatteringList_twobody(para::EDPara; kshift::Tuple{Float64, Fl
     momentum_groups = group_momentum_pairs(para)
     
     sct_list2 = Vector{Scattering{2}}()
-    if hasmethod(para.V_int, Tuple{Int64,Int64,Int64,Int64,Int64,Int64,Int64,Int64})
+    if para.momentum_coordinate
+        for (K_total, pairs) in momentum_groups
+            append!(sct_list2, scat_pair_group_coordinate(pairs, para; kshift=kshift))
+        end
+    else
         if kshift != (0.0, 0.0)
             @warn "kshift is ignored when para.V_int accepts momentum indices."
         end
 
         for (K_total, pairs) in momentum_groups
             append!(sct_list2, scat_pair_group_index(pairs, para))
-        end
-
-    elseif hasmethod(para.V_int, Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64},Tuple{Float64,Float64},Tuple{Float64,Float64},Int64,Int64,Int64,Int64})
-        for (K_total, pairs) in momentum_groups
-            append!(sct_list2, scat_pair_group_coordinate(pairs, para; kshift=kshift))
         end
     end
 

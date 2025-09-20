@@ -50,7 +50,7 @@ end
 # Two-body interaction matrix element
 # This implements the full Coulomb interaction with proper magnetic translation phases
 # The interaction is computed in momentum space with Landau level projection
-# Momentum inputs are Tuple(Float64, Float64) representing (k1, k2) in ratio of Gk
+# Momentum inputs are Tuple{Float64, Float64} representing (k1, k2) in ratio of Gk
 function V_int(kf1, kf2, ki2, ki1, cf1=1, cf2=1, ci2=1, ci1=1)::ComplexF64
     
     # Calculate momentum transfer (modulo reciprocal lattice)
@@ -90,6 +90,7 @@ end
 # Create parameter structure for the exact diagonalization
 # This contains all the system information needed for the calculation
 para = EDPara(k_list=k_list, Gk=Gk, V_int=V_int);
+para.momentum_coordinate
 
 blocks, block_k1, block_k2, k0number = 
     ED_momentum_block_division(para, ED_mbslist(para, (Ne,)));
