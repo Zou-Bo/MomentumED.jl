@@ -370,22 +370,24 @@ scattering2_shifted = ED_sortedScatteringList_twobody(para; kshift=(0.1, 0.1))
 """
 function ED_sortedScatteringList_twobody(para::EDPara; kshift::Tuple{Float64, Float64} = (0.0, 0.0))
 
-    sct_list2 = Vector{Scattering{2}}()
-    
     momentum_groups = group_momentum_pairs(para)
-
+    
+    sct_list2 = Vector{Scattering{2}}()
     if hasmethod(para.V_int, Tuple{Int64,Int64,Int64,Int64,Int64,Int64,Int64,Int64})
-        scat_pair_group(pairs) = scat_pair_group_index(pairs, para)
         if kshift != (0.0, 0.0)
             @warn "kshift is ignored when para.V_int accepts momentum indices."
         end
+
+        for (K_total, pairs) in momentum_groups
+            append!(sct_list2, scat_pair_group_index(pairs, para))
+        end
+
     elseif hasmethod(para.V_int, Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64},Tuple{Float64,Float64},Tuple{Float64,Float64},Int64,Int64,Int64,Int64})
-        scat_pair_group(pairs) = scat_pair_group_coordinate(pairs, para; kshift=kshift)
+        for (K_total, pairs) in momentum_groups
+            append!(sct_list2, scat_pair_group_coordinate(pairs, para; kshift=kshift))
+        end
     end
-    
-    for (K_total, pairs) in momentum_groups
-        append!(sct_list2, scat_pair_group(pairs))
-    end
+
     
     return sortMergeScatteringList(sct_list2)
 end
