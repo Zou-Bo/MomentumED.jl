@@ -9,6 +9,30 @@ invariants like Chern numbers.
 
 using LinearAlgebra
 
+"""
+Modify the overall phase of eigenvectors. This is a preparation for many-body connection Wilson loop integral.
+"""
+function ED_connection_gaugefixing!(ψ::Vector{ComplexF64}, suggest_dims::Int64=1;
+    warning_tol = 1e-8)
+    @assert 1 <= suggest_dims <= length(ψ)
+    x = ψ[suggest_dims]
+    if abs(x) < warning_tol
+        @warn "Gauge fixing may be unstable. Element at position $suggest_dims has amplitute $(abs(x))."
+    end
+    ψ .*= cis(-angle(x))
+end
+
+function ED_connection_gaugefixing!(ψ::Matrix{ComplexF64}, suggest_dims::Vector{Int64} = collect(1:size(ψ, 2));
+    warning_tol = 1e-8)
+    @assert 1 <= minimum(suggest_dims) && maximum(suggest_dims) <= size(ψ, 1)
+    @assert length(suggest_dims) == size(ψ, 2)
+    x = det(ψ[suggest_dims, :])
+    if abs(x) < warning_tol
+        @warn "Gauge fixing may be unstable. Determinant of elements at position $suggest_dims has amplitute $(abs(x))."
+    end
+    ψ[:, 1] .*= cis(-angle(x))
+end
+
 
 """
     ED_connection_step(mbs_list::Vector{MBS64}, ψ_f::Vector{ComplexF64}, ψ_i::Vector{ComplexF64},
@@ -91,19 +115,20 @@ function ED_connection_step(mbs_list::Vector{<: MBS64},
     # many-body connection step integral is the phase of the inner product
     mbc = angle(inner_prod)
 
+    if abs(mbc) > π/2
+        @warn "Accumulated connection on this segment $(round(mbs, digits = 3)) is greater than π/2. \n Consider use finer mesh."
+    end
+
     return mbc
 end
-
-
-
-function ED_NAconnection_step(mbs_list::Vector{<: MBS64}, 
+function ED_connection_step(mbs_list::Vector{<: MBS64}, 
     ψ_f::Matrix{ComplexF64}, ψ_i::Matrix{ComplexF64},
     shift_f::Tuple{Float64, Float64}, shift_i::Tuple{Float64, Float64},
     para::EDPara;
     wavefunction_tol::Float64 = 1e-8,
     print_amp::Bool = false,
     amp_warn_tol::Float64 = 0.7, amp_warn::Bool = true
-)::Matrix{ComplexF64}
+)::Float64
 
     @assert size(ψ_f, 1) == size(ψ_i, 1) == length(mbs_list) "Length of basis and eigenvectors must match."
     @assert size(ψ_f, 2) == size(ψ_i, 2) "Number of states must match in non-Abelian connection"
@@ -123,8 +148,8 @@ function ED_NAconnection_step(mbs_list::Vector{<: MBS64},
     end
     
 
-    inner_prod = zeros(ComplexF64, g, g)  # many-body connection step integral
-    coeffi = similar(inner_prod)
+    inner_prod_matrix = zeros(ComplexF64, g, g)  # many-body connection step integral
+    coeffi = similar(inner_prod_matrix)
     for x in eachindex(mbs_list)
         if norm(ψ_i[x, :]) > wavefunction_tol && norm(ψ_f[x, :]) > wavefunction_tol
 
@@ -137,22 +162,24 @@ function ED_NAconnection_step(mbs_list::Vector{<: MBS64},
                 para.FF_inf_angle(kf, ki, c)
             end
 
-            inner_prod += coeffi * cis(bc)
+            inner_prod_matrix += coeffi * cis(bc)
         end
     end
 
-    amp = opnorm(inner_prod)
-
-    s = -im * log(inner_prod)
-    mbc = hermitianpart(s)
-
+    inner_prod = det(inner_prod_matrix)
 
     if print_amp
-        println("Inner product: amp = $amp, phase = $(eigvals(mbc))")
+        println("Inner product: amp = $(abs(inner_prod)), phase = $(angle(inner_prod))")
     end
     
-    if amp_warn && amp < amp_warn_tol
-        @warn "Small inner product amplitude: $amp"
+    if amp_warn && abs(inner_prod) < amp_warn_tol
+        @warn "Small inner product amplitude: $(abs(inner_prod))"
+    end
+    # many-body connection step integral is the phase of the inner product
+    mbc = angle(inner_prod)
+
+    if abs(mbc) > π/2
+        @warn "Accumulated connection on this segment $(round(mbs, digits = 3)) is greater than π/2. \n Consider use finer mesh."
     end
 
     return mbc

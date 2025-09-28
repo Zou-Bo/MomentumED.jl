@@ -7,17 +7,20 @@ module MomentumED
 
 # type
 public MBS64, Scattering
+
 # preparation
 public ED_mbslist_onecomponent
 export EDPara, ED_mbslist, ED_momentum_block_division
 export ED_sortedScatteringList_onebody
 export ED_sortedScatteringList_twobody
+
 # main solving function
 export EDsolve
+
 # analysis
 export ED_onebody_rdm
 # export ED_entanglement_entropy
-export ED_connection_step, ED_NAconnection_step
+export ED_connection_step, ED_connection_gaugefixing!
 
 using LinearAlgebra
 using SparseArrays
@@ -116,7 +119,7 @@ scattering1 = ED_sortedScatteringList_onebody(para)
 scattering2 = ED_sortedScatteringList_twobody(para)
 
 # Solve for ground state and first excited state
-energies, wavefunctions = EDsolve(blocks[1], scattering1, scattering2, 2, 1)
+energies, wavefunctions = EDsolve(blocks[1], scattering1, scattering2; N=1)
 println("Ground state energy: ", energies[1])
 ```
 """
