@@ -148,88 +148,12 @@ function Base.empty!(mbs::MBS64{bits}, i_list::Int64...; check::Bool=true) where
     return MBS64{bits}(mbs.n & ~mask.n)
 end
 
-# These functions may be useless
-#=
-"""
-    flip_orbital(mbs::MBS64{bits}, i::Int64) where {bits}
-
-Flip the occupation of a single orbital (occupied -> empty, empty -> occupied).
-"""
-function flip_orbital(mbs::MBS64{bits}, i::Int64) where {bits}
-    @assert 1 <= i <= bits "Orbital index out of bounds"
-    return MBS64{bits}(xor(mbs.n, UInt64(1) << (i - 1)))
-end
-
-# Particle counting and statistics
-
-"""
-    count_particles(mbs::MBS64{bits}) where {bits}
-    get_particle_number(mbs::MBS64{bits}) where {bits}
-
-Count the total number of occupied orbitals (particles) in the state.
-"""
-function count_particles(mbs::MBS64{bits}) where {bits}
-    count_ones(mbs.n)
-end
-
-const get_particle_number = count_particles
-
-
-"""
-    get_occupied_orbitals(mbs::MBS64{bits}) where {bits}
-
-Return a vector of all occupied orbital indices (1-based).
-"""
-function get_occupied_orbitals(mbs::MBS64{bits}) where {bits}
-    return occ_list(mbs)
-end
-
-"""
-    get_empty_state(bits::Int)
-
-Create an MBS64 representing the vacuum state (no particles).
-"""
-function get_empty_state(bits::Int)
-    return MBS64{bits}(UInt64(0))
-end
-
-"""
-    get_full_state(bits::Int)
-
-Create an MBS64 representing the fully occupied state (all orbitals filled).
-"""
-function get_full_state(bits::Int)
-    return MBS64{bits}((UInt64(1) << bits) - 1)
-end
-
-
-# State generation utilities
-
-"""
-    get_state_index(mbs::MBS64{bits}) where {bits}
-
-Get the raw UInt64 representation of the state.
-"""
-function get_state_index(mbs::MBS64{bits}) where {bits}
-    return mbs.n
-end
-
-"""
-    set_state(mbs::MBS64{bits}, new_state::UInt64) where {bits}
-
-Create a new MBS64 with the specified raw state value.
-"""
-function set_state(mbs::MBS64{bits}, new_state::UInt64) where {bits}
-    return MBS64{bits}(new_state)
-end
-
-
-=#
-
 """
     scat_occ_number(mbs::MBS64{bits}, i_list::Union{Vector{Int64}, NTuple{N, Int64}}) where {bits}
 
 Count the total number of occupied orbitals that contribute to the sign flip when applying a series of creation/annihilation operators.
+When a Scattering{N} object is applied, the number of sign flips should be the sum of 
+applying the creation i_list and annihilation i_list on the middle state.
 """
 function scat_occ_number(mbs::MBS64{bits}, i_list::Vector{Int64}) where {bits}
 
