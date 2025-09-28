@@ -1,5 +1,3 @@
-
-
 """
     Scattering{N} - Represents an N-body scattering term in the Hamiltonian
     
@@ -128,13 +126,20 @@ isnormal(x::Scattering{2}) = x.in[1] > x.in[2] && x.out[1] > x.out[2] && x.in >=
 
 
 
-import Base: isless, ==, +
-isless(x::Scattering{N}, y::Scattering{N}) where {N} = x.in < y.in || x.in == y.in && x.out < y.out
-==(x::Scattering{N}, y::Scattering{N}) where {N} = x.in == y.in && x.out == y.out
+
+import Base: isless, ==, +, *
+isless(x::Scattering{N}, y::Scattering{N})::Bool where {N} = x.in < y.in || x.in == y.in && x.out < y.out
+==(x::Scattering{N}, y::Scattering{N})::Bool where {N} = x.in == y.in && x.out == y.out
 function +(x::Scattering{N}, y::Scattering{N})::Scattering{N} where {N}
     @assert x == y "Can only add identical Scattering terms"
     return Scattering{N}(x.Amp + y.Amp, x.out, x.in)
 end
+function *(x::T, scat::Scattering{N})::Scattering{N} where {N, T <: Number}
+    Scattering{N}(ComplexF64(x)*scat.Amp, scat.out, scat.in)
+end
+
+
+
 """
 Sort and merge a list of normalized scattering terms
 """
@@ -151,5 +156,32 @@ function sortMergeScatteringList(normal_sct_list::Vector{Scattering{N}})::Vector
         end
     end
     return merged_list
+end
+
+
+
+"""
+(need detailed document.)
+Applying a scatter operator on a many-body basis. Return the amplitute and the output many-body basis.
+The amplitute is zero if no output state.
+"""
+function *(scat::Scattering, mbs_in::MBS64{bits})::Tuple{ComplexF64, MBS64{bits}} where {bits}
+    if isoccupied(mbs_in, scat.in...)
+        if scat.in == scat.out
+            mbs_out = mbs_in
+            return scat.Amp, mbs_out
+        else
+            mbs_mid = empty!(mbs_in, scat.in...; check = false)
+            if isempty(mbs_mid, scat.out...)
+                mbs_out = occupy!(mbs_mid, scat.out...; check = false)
+                amp = scat.Amp
+                if isodd(scat_occ_number(mbs_mid, scat.in) + scat_occ_number(mbs_mid, scat.out))
+                    amp = -amp
+                end
+                return amp, mbs_out
+            end
+        end
+    end
+    return 0.0, mbs_in
 end
 

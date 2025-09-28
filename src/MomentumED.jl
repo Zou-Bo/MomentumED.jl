@@ -15,7 +15,7 @@ export ED_sortedScatteringList_onebody
 export ED_sortedScatteringList_twobody
 
 # main solving function
-export EDsolve
+export EDsolve, ED_apply
 
 # analysis
 export ED_onebody_rdm
@@ -183,6 +183,28 @@ function EDsolve(sorted_mbs_block_list::Vector{<: MBS64},
     return vals, vecs
 end
 
+function ED_apply(operator::Scattering{N}, vec_in::Vector{Complex{F}},
+    basis::Vector{MBS64{bits}})::Vector{Complex{F}; 
+    check_in_space::Bool = true} where{N, bits, F <: Real}
+
+    @assert operator.in[1] <= bits && operator.out[1] <= bits "The operator applies on more than the basis dimension."
+    @assert length(basis) == length(vec_in) "The vector and basis have different lenght."
+
+    vec_out = zeros{Complex{F}, length(basis)}
+    
+    dict = create_state_mapping(basis)
+    for (j, mbs_in) in enumerate(basis)
+        amp, mbs_out = operator * mbs_in
+        i = get(dict, mbs_out.n, 0)
+        if i == 0
+            check_in_space && throw(AssertionError("The operator scatters incident state outside the assigned Hilbert space."))
+        else
+            vec_out[i] += amp * vec_in[j]
+        end
+    end
+
+    return vec_out
+end
 
 
 include("analysis/onebody_reduced_density_matrix.jl")

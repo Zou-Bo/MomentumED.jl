@@ -1,48 +1,13 @@
 """
     sparse_matrix.jl - Sparse Hamiltonian matrix construction from scattering lists
     
-    This module provides functions for converting scattering lists into sparse matrix
+    This file provides functions for converting scattering lists into sparse matrix
     Hamiltonians for momentum-conserved exact diagonalization. Handles both one-body
     and two-body scattering terms with proper Hermitian matrix construction.
 """
 
+include("search.jl")
 
-
-"""
-    my_searchsortedfirst(list, i)
-
-Search for the index of the first occurrence of element i in sorted list.
-Returns 0 if element is not found.
-"""
-function my_searchsortedfirst(list, i)
-    index = searchsortedfirst(list, i)
-    if index > lastindex(list) || list[index] != i
-        return 0
-    else
-        return index
-    end
-end
-
-
-"""
-    create_state_mapping(sorted_mbs_block_list)
-
-Create a dictionary mapping from MBS64 states to their indices for O(1) lookup.
-This eliminates the my_searchsortedfirst bottleneck by providing direct state-to-index mapping.
-
-# Arguments
-- `sorted_mbs_block_list::Vector{MBS64{bits}}`: Sorted list of MBS64 basis states
-
-# Returns
-- `Dict{Int, Int}`: Mapping from state integer representation to matrix index
-"""
-function create_state_mapping(sorted_mbs_block_list::Vector{MBS64{bits}}) where {bits}
-    mapping = Dict{Int, Int}()
-    for (i, state) in enumerate(sorted_mbs_block_list)
-        mapping[state.n] = i
-    end
-    return mapping
-end
 
 """
     HmltMatrix_threaded(sorted_mbs_block_list, sorted_onebody_scat_list, sorted_twobody_scat_list, n_threads=Threads.nthreads())
@@ -94,28 +59,37 @@ function HmltMatrix_threaded(
         
         for scat_list in sorted_scat_lists
             for scat in scat_list
-                if isoccupied(mbs_in, scat.in...)
-                    if scat.in == scat.out
-                        # Diagonal term
-                        push!(thread_I[tid], j)
-                        push!(thread_J[tid], j)
-                        push!(thread_V[tid], scat.Amp)
-                    else
-                        # Off-diagonal term
-                        mbs_mid = empty!(mbs_in, scat.in...; check=false)
-                        if isempty(mbs_mid, scat.out...)
-                            mbs_out = occupy!(mbs_mid, scat.out...; check=false)
-                            # i = get(state_mapping, mbs_out.n, 0)
-                            i = my_searchsortedfirst(sorted_mbs_block_list, mbs_out)
-                            @assert i != 0 "H is not momentum- or component-conserving."
-
-                            sign_occ = (-1)^(scat_occ_number(mbs_mid, scat.in) + scat_occ_number(mbs_mid, scat.out))
-                            push!(thread_I[tid], i)
-                            push!(thread_J[tid], j)
-                            push!(thread_V[tid], sign_occ * scat.Amp)
-                        end
-                    end
+                amp, mbs_out = scat * mbs_in
+                if !iszero(amp)
+                    # i = get(state_mapping, mbs_out.n, 0)
+                    i = my_searchsortedfirst(sorted_mbs_block_list, mbs_out)
+                    @assert i != 0 "H is not momentum- or component-conserving."
+                    push!(thread_I[tid], i)
+                    push!(thread_J[tid], j)
+                    push!(thread_V[tid], amp)
                 end
+                # if isoccupied(mbs_in, scat.in...)
+                #     if scat.in == scat.out
+                #         # Diagonal term
+                #         push!(thread_I[tid], j)
+                #         push!(thread_J[tid], j)
+                #         push!(thread_V[tid], scat.Amp)
+                #     else
+                #         # Off-diagonal term
+                #         mbs_mid = empty!(mbs_in, scat.in...; check=false)
+                #         if isempty(mbs_mid, scat.out...)
+                #             mbs_out = occupy!(mbs_mid, scat.out...; check=false)
+                #             # i = get(state_mapping, mbs_out.n, 0)
+                #             i = my_searchsortedfirst(sorted_mbs_block_list, mbs_out)
+                #             @assert i != 0 "H is not momentum- or component-conserving."
+
+                #             sign_occ = (-1)^(scat_occ_number(mbs_mid, scat.in) + scat_occ_number(mbs_mid, scat.out))
+                #             push!(thread_I[tid], i)
+                #             push!(thread_J[tid], j)
+                #             push!(thread_V[tid], sign_occ * scat.Amp)
+                #         end
+                #     end
+                # end
             end
         end
     end
