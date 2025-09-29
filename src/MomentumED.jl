@@ -184,8 +184,8 @@ function EDsolve(sorted_mbs_block_list::Vector{<: MBS64},
 end
 
 function ED_apply(operator::Scattering{N}, vec_in::Vector{Complex{F}},
-    basis::Vector{MBS64{bits}})::Vector{Complex{F}; 
-    check_in_space::Bool = true} where{N, bits, F <: Real}
+    basis::Vector{MBS64{bits}}; check_in_space::Bool = true
+    )::Vector{Complex{F}} where{N, bits, F <: Real}
 
     @assert operator.in[1] <= bits && operator.out[1] <= bits "The operator applies on more than the basis dimension."
     @assert length(basis) == length(vec_in) "The vector and basis have different lenght."
