@@ -128,8 +128,8 @@ isnormal(x::Scattering{2}) = x.in[1] > x.in[2] && x.out[1] > x.out[2] && x.in >=
 
 
 import Base: isless, ==, +, *
-isless(x::Scattering{N}, y::Scattering{N})::Bool where {N} = x.in < y.in || x.in == y.in && x.out < y.out
-==(x::Scattering{N}, y::Scattering{N})::Bool where {N} = x.in == y.in && x.out == y.out
+isless(x::Scattering{N}, y::Scattering{N}) where {N} = x.in < y.in || x.in == y.in && x.out < y.out
+==(x::Scattering{N}, y::Scattering{N}) where {N} = x.in == y.in && x.out == y.out
 function +(x::Scattering{N}, y::Scattering{N})::Scattering{N} where {N}
     @assert x == y "Can only add identical Scattering terms"
     return Scattering{N}(x.Amp + y.Amp, x.out, x.in)
