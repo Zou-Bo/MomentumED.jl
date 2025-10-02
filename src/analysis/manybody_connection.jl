@@ -14,21 +14,25 @@ Modify the overall phase of eigenvectors. This is a preparation for many-body co
 """
 function ED_connection_gaugefixing!(ψ::Vector{ComplexF64}, suggest_dims::Int64=1;
     warning_tol = 1e-8)
-    @assert 1 <= suggest_dims <= length(ψ)
+
+    @assert 1 <= suggest_dims <= length(ψ) "suggested vector locates outside the Hilbert space."
+
     x = ψ[suggest_dims]
     if abs(x) < warning_tol
-        @warn "Gauge fixing may be unstable. Element at position $suggest_dims has amplitute $(abs(x))."
+        @warn "Gauge fixing may be unstable. Element at position $suggest_dims has amplitude $(abs(x))."
     end
     ψ .*= cis(-angle(x))
 end
 
 function ED_connection_gaugefixing!(ψ::Matrix{ComplexF64}, suggest_dims::Vector{Int64} = collect(1:size(ψ, 2));
     warning_tol = 1e-8)
-    @assert 1 <= minimum(suggest_dims) && maximum(suggest_dims) <= size(ψ, 1)
-    @assert length(suggest_dims) == size(ψ, 2)
+
+    @assert 1 <= minimum(suggest_dims) && maximum(suggest_dims) <= size(ψ, 1) "suggested vectors locate outside the Hilbert space."
+    @assert length(suggest_dims) == size(ψ, 2) "number of suggested vectors mismatches number of eigenvectors."
+
     x = det(ψ[suggest_dims, :])
     if abs(x) < warning_tol
-        @warn "Gauge fixing may be unstable. Determinant of elements at position $suggest_dims has amplitute $(abs(x))."
+        @warn "Gauge fixing may be unstable. Determinant of elements at position $suggest_dims has amplitude $(abs(x))."
     end
     ψ[:, 1] .*= cis(-angle(x))
 end
@@ -179,7 +183,7 @@ function ED_connection_step(mbs_list::Vector{<: MBS64},
     mbc = angle(inner_prod)
 
     if abs(mbc) > π/2
-        @warn "Accumulated connection on this segment $(round(mbs, digits = 3)) is greater than π/2. \n Consider use finer mesh."
+        @warn "Accumulated connection on this segment $(round(mbc, digits = 3)) is greater than π/2. \n Consider use finer mesh."
     end
 
     return mbc
