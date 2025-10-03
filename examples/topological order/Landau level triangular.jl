@@ -131,13 +131,19 @@ module LLT
     # V(q) = W₀ * Σ_m V_m * L_m(q²l²)
     # return V(q) * Form_Factor(q) * Form_Factor(-q) 
     function V_Haldane(q1::Float64, q2::Float64;
-        V_m::Vector{Float64}, n_LL::Int64 = 0, form_factor::Bool = true
+        same_layer::Bool = true, n_LL::Int64 = 0, form_factor::Bool = true
     )
 
         ql_square = (q1^2 + q2^2 - q1*q2) * Gl^2  # (|q|l)^2
 
+        if same_layer
+            V_m = V_intra
+        else
+            V_m = V_inter
+        end
+        
         V = 0.0
-        for i in eachindex(V_intra)
+        for i in eachindex(V_m)
             V += laguerrel(i-1, 0, ql_square) * V_m[i]
         end
 
@@ -160,7 +166,7 @@ module LLT
         # layer_number::Int64
 
         function LandauInteraction(;
-            interaction::Symbol, layer_number::Int64, same_layer::Bool=true, level_index::Int64 = 0)
+            interaction::Symbol, layer_number::Int64, level_index::Int64 = 0)
 
             @assert interaction ∈ (:Coulomb, :Haldane, :mix) """
                 interaction can only be :Coulomb, :Haldane, or :mix.
@@ -168,50 +174,33 @@ module LLT
 
             if layer_number == 1
                 if interaction == :Coulomb
-                    return new( (q1, q2) ->
+                    return new( (q1, q2, same_layer) ->
                         V_Coulomb(q1, q2; d_l = 0.0, n_LL = level_index)
                     )
                 elseif interaction == :Haldane
-                    return new( (q1, q2) ->
-                        V_Haldane(q1, q2; V_m = V_intra, n_LL = level_index)
+                    return new( (q1, q2, same_layer) ->
+                        V_Haldane(q1, q2; same_layer = true, n_LL = level_index)
                     )
                 elseif interaction == :mix
-                    return new( (q1, q2) ->
-                        mix * V_Haldane(q1, q2; V_m = V_intra, n_LL = level_index) + 
+                    return new( (q1, q2, same_layer) ->
+                        mix * V_Haldane(q1, q2; same_layer = true, n_LL = level_index) + 
                         (1-mix) * V_Coulomb(q1, q2; d_l = 0.0, n_LL = level_index)
                     )
                 end
             elseif layer_number == 2
-                if same_layer
-                    if interaction == :Coulomb
-                        return new( (q1, q2) ->
-                            V_Coulomb(q1, q2; same_layer = true, n_LL = level_index)
-                        )
-                    elseif interaction == :Haldane
-                        return new( (q1, q2) ->
-                            V_Haldane(q1, q2; V_m = V_intra, n_LL = level_index)
-                        )
-                    elseif interaction == :mix
-                        return new( (q1, q2) ->
-                            mix * V_Haldane(q1, q2; V_m = V_intra, n_LL = level_index) + 
-                            (1-mix) * V_Coulomb(q1, q2; same_layer = true, n_LL = level_index)
-                        )
-                    end
-                else
-                    if interaction == :Coulomb
-                        return new( (q1, q2) ->
-                            V_Coulomb(q1, q2; same_layer = false, n_LL = level_index)
-                        )
-                    elseif interaction == :Haldane
-                        return new( (q1, q2) ->
-                            V_Haldane(q1, q2; V_m = V_intra, n_LL = level_index)
-                        )
-                    elseif interaction == :mix
-                        return new( (q1, q2) ->
-                            mix * V_Haldane(q1, q2; V_m = V_intra, n_LL = level_index) + 
-                            (1-mix) * V_Coulomb(q1, q2; same_layer = false, n_LL = level_index)
-                        )
-                    end
+                if interaction == :Coulomb
+                    return new( (q1, q2, same_layer) ->
+                        V_Coulomb(q1, q2; same_layer = same_layer, n_LL = level_index)
+                    )
+                elseif interaction == :Haldane
+                    return new( (q1, q2, same_layer) ->
+                        V_Haldane(q1, q2; same_layer = same_layer, n_LL = level_index)
+                    )
+                elseif interaction == :mix
+                    return new( (q1, q2, same_layer) ->
+                        mix * V_Haldane(q1, q2; same_layer = same_layer, n_LL = level_index) + 
+                        (1-mix) * V_Coulomb(q1, q2; same_layer = same_layer, n_LL = level_index)
+                    )
                 end
             else
                 error("layer_number can only be 1 or 2.")
