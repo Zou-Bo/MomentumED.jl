@@ -76,38 +76,33 @@ module LLT
 
     # Decompose Coulomb interaction into Haldane pseudopotentials
     # function can be V_Coulomb_monolayer, V_Coulomb_bilayer; keywords can be SameLayer = true/false
-    function pseudo_potential_decomposition(m::Int64, func::Function; SameLayer...)
+    function pseudo_potential_decomposition(m::Int64; kwds...)
         results = quadgk(0.0, Inf) do q2l2
-            laguerrel(m, 0, q2l2) * func(sqrt(q2l2)/Gl, 0.0; SameLayer...) * exp(-q2l2)
+            laguerrel(m, 0, q2l2) * V_Coulomb(sqrt(q2l2)/Gl, 0.0; form_factor = false, kwds...) * exp(-q2l2)
         end
         return results[1] / W0
     end
 
 
-    # Define the Coulomb interaction with gate screening
-    # This is the Fourier transform of the Coulomb interaction
-    # V(q) = W₀ * 1/|ql| * tanh(|qD|)
-    function V_Coulomb_monolayer(q1::Float64, q2::Float64)
-        ql = sqrt(q1^2 + q2^2 - q1*q2) * Gl  # |q| in magnetic length units
-        if ql == 0.0
-            return W0 * D_l  # Regularization at q=0 (divergent part)
-        end
-        return W0 / ql * tanh(ql * D_l)
-    end
 
 
 
 
-    # Define the Coulomb interaction with gate screening
-    # This is the Fourier transform of the Coulomb interaction
+    # Define the Landau level projected Coulomb interaction with gate screening
+    # This is the Fourier transform of the bilayer Coulomb interaction
+    # when d_l = 0, it is reduced to monolayer interaction
     # V(q) = W₀ * 1/|ql| * (screening factors)
-    function V_Coulomb_bilayer(q1::Float64, q2::Float64; SameLayer::Bool)
+    # return V(q) * Form_Factor(q) * Form_Factor(-q)
+    function V_Coulomb(q1::Float64, q2::Float64; 
+        d_l::Float64 = d_l, same_layer::Bool=true, n_LL::Int64 = 0, form_factor::Bool = true
+    )
+
         ql = sqrt(q1^2 + q2^2 - q1*q2) * Gl  # |q| in magnetic length units
         DD_l = 2D_l
 
         V = W0
         if ql == 0.0  # Regularization at q=0 (divergent part)
-            if SameLayer
+            if same_layer
                 V *= (DD_l + d_l) * (DD_l - d_l) / 2DD_l
             else
                 V *= (DD_l - d_l)^2 / 2DD_l
@@ -115,46 +110,39 @@ module LLT
         else
             expd = exp(-ql * d_l)
             expD = exp(-ql * DD_l)
-            if SameLayer
+            if same_layer
                 V *= (inv(expd) - expD) * (expd - expD) / (1- expD^2) / ql
             else
                 V *= (expd - expD)^2 / (1- expD^2) / ql / expd
             end
         end
-        return V
+
+        if form_factor
+            V *= laguerrel(n_LL, 0.0, 0.5*ql^2)^2 * exp(-0.5 * ql^2)
+        end
+
+        return V 
     end
 
 
 
 
-    # Define the m=1 Haldane pseudopotential in n=0 Landau level
+    # Define the Haldane pseudopotentials projected on n=0 Landau level
     # V(q) = W₀ * Σ_m V_m * L_m(q²l²)
-    function V_Haldane_monolayer(q1::Float64, q2::Float64)
+    # return V(q) * Form_Factor(q) * Form_Factor(-q) 
+    function V_Haldane(q1::Float64, q2::Float64;
+        V_m::Vector{Float64}, n_LL::Int64 = 0, form_factor::Bool = true
+    )
+
         ql_square = (q1^2 + q2^2 - q1*q2) * Gl^2  # (|q|l)^2
+
         V = 0.0
         for i in eachindex(V_intra)
-            V += laguerrel(i-1, 0, ql_square) * V_intra[i]
+            V += laguerrel(i-1, 0, ql_square) * V_m[i]
         end
-        return W0 * V
-    end
 
-
-
-
-    # Define the m=0 interlayer Haldane pseudopotential in n=0 Landau level
-    # V_inter(q) = W₀ * Σ_m V_m * L_m(q²l²)
-    function V_Haldane_bilayer(q1::Float64, q2::Float64; SameLayer::Bool)
-        ql_square = (q1^2 + q2^2 - q1*q2) * Gl^2  # (|q|l)^2
-
-        V = 0.0 
-        if SameLayer
-            for i in eachindex(V_intra)
-                V += laguerrel(i-1, 0, ql_square) * V_intra[i]
-            end
-        else
-            for i in eachindex(V_inter)
-                V += laguerrel(i-1, 0, ql_square) * V_inter[i]
-            end
+        if form_factor
+            V *= laguerrel(n_LL, 0.0, 0.5ql_square)^2 * exp(-0.5 * ql_square)
         end
         return W0 * V
     end
@@ -163,163 +151,77 @@ module LLT
 
 
 
-    # mixing interaction
-    function V_mixing_monolayer(q1::Float64, q2::Float64)
-        return mix * V_Haldane_monolayer(q1, q2) + (1-mix) * V_Coulomb_monolayer(q1, q2)
-    end
-
-
-
-
-    # mixing interaction
-    function V_mixing_bilayer(q1::Float64, q2::Float64; SameLayer::Bool)
-        return mix * V_Haldane_bilayer(q1, q2; SameLayer) + (1-mix) * V_Coulomb_bilayer(q1, q2; SameLayer)
-    end
-
-
-
-
-    # Two-body interaction matrix element
+    # Callable structure to compute Two-body interaction matrix element
     # This implements the full Coulomb interaction with proper magnetic translation phases
     # The interaction is computed in momentum space with Landau level projection
     # Momentum inputs are Tuple(Float64, Float64) representing (k1, k2) in ratio of Gk
-    function V_int_Coulomb_monolayer(kf1, kf2, ki2, ki1, cf1=1, cf2=1, ci2=1, ci1=1)::ComplexF64
-        
-        # Calculate momentum transfer (modulo reciprocal lattice)
-        q = BZ(ki1 .- kf1)
-        G_shift1 = round.(Int64, ki1 .- kf1 .- q, RoundNearest)
-        G_shift2 = round.(Int64, kf2 .- ki2 .- q, RoundNearest)
+    struct LandauInteraction <: Function
+        V_q::Function
+        # layer_number::Int64
 
-        V_total = ComplexF64(0.0)
-        # Sum over reciprocal lattice vectors for convergence
-        # Nshell = 3 provides good convergence for this system
-        Nshell = 3
-        for g1 in -Nshell:Nshell, g2 in -Nshell:Nshell
-            if abs(g1-g2) > Nshell
-                continue
+        function LandauInteraction(;
+            interaction::Symbol, layer_number::Int64, same_layer::Bool=true, level_index::Int64 = 0)
+
+            @assert interaction ∈ (:Coulomb, :Haldane, :mix) """
+                interaction can only be :Coulomb, :Haldane, or :mix.
+            """
+
+            if layer_number == 1
+                if interaction == :Coulomb
+                    return new( (q1, q2) ->
+                        V_Coulomb(q1, q2; d_l = 0.0, n_LL = level_index)
+                    )
+                elseif interaction == :Haldane
+                    return new( (q1, q2) ->
+                        V_Haldane(q1, q2; V_m = V_intra, n_LL = level_index)
+                    )
+                elseif interaction == :mix
+                    return new( (q1, q2) ->
+                        mix * V_Haldane(q1, q2; V_m = V_intra, n_LL = level_index) + 
+                        (1-mix) * V_Coulomb(q1, q2; d_l = 0.0, n_LL = level_index)
+                    )
+                end
+            elseif layer_number == 2
+                if same_layer
+                    if interaction == :Coulomb
+                        return new( (q1, q2) ->
+                            V_Coulomb(q1, q2; same_layer = true, n_LL = level_index)
+                        )
+                    elseif interaction == :Haldane
+                        return new( (q1, q2) ->
+                            V_Haldane(q1, q2; V_m = V_intra, n_LL = level_index)
+                        )
+                    elseif interaction == :mix
+                        return new( (q1, q2) ->
+                            mix * V_Haldane(q1, q2; V_m = V_intra, n_LL = level_index) + 
+                            (1-mix) * V_Coulomb(q1, q2; same_layer = true, n_LL = level_index)
+                        )
+                    end
+                else
+                    if interaction == :Coulomb
+                        return new( (q1, q2) ->
+                            V_Coulomb(q1, q2; same_layer = false, n_LL = level_index)
+                        )
+                    elseif interaction == :Haldane
+                        return new( (q1, q2) ->
+                            V_Haldane(q1, q2; V_m = V_intra, n_LL = level_index)
+                        )
+                    elseif interaction == :mix
+                        return new( (q1, q2) ->
+                            mix * V_Haldane(q1, q2; V_m = V_intra, n_LL = level_index) + 
+                            (1-mix) * V_Coulomb(q1, q2; same_layer = false, n_LL = level_index)
+                        )
+                    end
+                end
+            else
+                error("layer_number can only be 1 or 2.")
             end
-
-            # Construct the full momentum transfer including reciprocal lattice
-            qq1 = q[1] + g1
-            qq2 = q[2] + g2
-
-            # Calculate phase factors from magnetic translation algebra
-            # These phases ensure proper commutation relations and gauge invariance
-            phase_angle = ql_cross(ki1, kf1)
-            phase_angle += ql_cross(ki1 .+ kf1, (qq1, qq2) )
-            phase_angle += ql_cross(ki2, kf2)
-            phase_angle += ql_cross(ki2 .+ kf2, (-qq1, -qq2) )
-
-            phase = cispi(phase_angle)
-            sign = ita(g1+G_shift1[1], g2+G_shift1[2]) * ita(g1+G_shift2[1], g2+G_shift2[2])
-
-            q2l2 = (qq1^2 + qq2^2 - qq1*qq2) * Gl^2
-
-            V_total += sign * phase * V_Coulomb_monolayer(qq1, qq2) * exp(-0.5 * q2l2)
         end
-
-        return V_total
     end
 
 
 
-
-    # Two-body interaction matrix element
-    # This implements the full Coulomb interaction with proper magnetic translation phases
-    # The interaction is computed in momentum space with Landau level projection
-    # Momentum inputs are Tuple(Float64, Float64) representing (k1, k2) in ratio of Gk
-    function V_int_Coulomb_bilayer(kf1, kf2, ki2, ki1, cf1, cf2, ci2, ci1)::ComplexF64
-        
-        # Layer conservation: interaction must conserve layer indices
-        if ci1 != cf1 || ci2 != cf2
-            return 0.0 + 0.0im
-        end
-
-        # Calculate momentum transfer (modulo reciprocal lattice)
-        q = BZ(ki1 .- kf1)
-        G_shift1 = round.(Int64, ki1 .- kf1 .- q, RoundNearest)
-        G_shift2 = round.(Int64, kf2 .- ki2 .- q, RoundNearest)
-
-        V_total = ComplexF64(0.0)
-        # Sum over reciprocal lattice vectors for convergence
-        # Nshell = 3 provides good convergence for this system
-        Nshell = 3
-        for g1 in -Nshell:Nshell, g2 in -Nshell:Nshell
-            if abs(g1-g2) > Nshell
-                continue
-            end
-
-            # Construct the full momentum transfer including reciprocal lattice
-            qq1 = q[1] + g1
-            qq2 = q[2] + g2
-
-            # Calculate phase factors from magnetic translation algebra
-            # These phases ensure proper commutation relations and gauge invariance
-            phase_angle = ql_cross(ki1, kf1)
-            phase_angle += ql_cross(ki1 .+ kf1, (qq1, qq2) )
-            phase_angle += ql_cross(ki2, kf2)
-            phase_angle += ql_cross(ki2 .+ kf2, (-qq1, -qq2) )
-
-            phase = cispi(phase_angle)
-            sign = ita(g1+G_shift1[1], g2+G_shift1[2]) * ita(g1+G_shift2[1], g2+G_shift2[2])
-
-            q2l2 = (qq1^2 + qq2^2 - qq1*qq2) * Gl^2
-
-            V_total += sign * phase * V_Coulomb_bilayer(qq1, qq2; SameLayer = (ci1==ci2)) * exp(-0.5 * q2l2)
-        end
-
-        return V_total
-    end
-
-
-
-    # Two-body pseudopotential matrix element
-    # The interaction is computed in momentum space with Landau level projection
-    # Momentum inputs are Tuple(Float64, Float64) representing (k1, k2) in ratio of Gk
-    function V_int_Haldane_monolayer(kf1, kf2, ki2, ki1, cf1=1, cf2=1, ci2=1, ci1=1)::ComplexF64
-        
-        # Calculate momentum transfer (modulo reciprocal lattice)
-        q = BZ(ki1 .- kf1)
-        G_shift1 = round.(Int64, ki1 .- kf1 .- q, RoundNearest)
-        G_shift2 = round.(Int64, kf2 .- ki2 .- q, RoundNearest)
-
-        V_total = ComplexF64(0.0)
-        # Sum over reciprocal lattice vectors for convergence
-        # Nshell = 3 provides good convergence for this system
-        Nshell = 3
-        for g1 in -Nshell:Nshell, g2 in -Nshell:Nshell
-            if abs(g1-g2) > Nshell
-                continue
-            end
-
-            # Construct the full momentum transfer including reciprocal lattice
-            qq1 = q[1] + g1
-            qq2 = q[2] + g2
-
-            # Calculate phase factors from magnetic translation algebra
-            # These phases ensure proper commutation relations and gauge invariance
-            phase_angle = ql_cross(ki1, kf1)
-            phase_angle += ql_cross(ki1 .+ kf1, (qq1, qq2) )
-            phase_angle += ql_cross(ki2, kf2)
-            phase_angle += ql_cross(ki2 .+ kf2, (-qq1, -qq2) )
-
-            phase = cispi(phase_angle)
-            sign = ita(g1+G_shift1[1], g2+G_shift1[2]) * ita(g1+G_shift2[1], g2+G_shift2[2])
-
-            q2l2 = (qq1^2 + qq2^2 - qq1*qq2) * Gl^2
-
-            V_total += sign * phase * V_Haldane_monolayer(qq1, qq2) * exp(-0.5 * q2l2)
-        end
-
-        return V_total
-    end
-
-
-
-    # Two-body pseudopotential matrix element
-    # The interaction is computed in momentum space with Landau level projection
-    # Momentum inputs are Tuple(Float64, Float64) representing (k1, k2) in ratio of Gk
-    function V_int_Haldane_bilayer(kf1, kf2, ki2, ki1, cf1, cf2, ci2, ci1)::ComplexF64
+    function (V_int::LandauInteraction)(kf1, kf2, ki2, ki1, cf1=1, cf2=1, ci2=1, ci1=1)::ComplexF64
         
         # Layer conservation: interaction must conserve layer indices
         if ci1 != cf1 || ci2 != cf2
@@ -350,106 +252,17 @@ module LLT
             phase_angle += ql_cross(ki1 .+ kf1, (qq1, qq2) )
             phase_angle += ql_cross(ki2, kf2)
             phase_angle += ql_cross(ki2 .+ kf2, (-qq1, -qq2) )
-
             phase = cispi(phase_angle)
+
             sign = ita(g1+G_shift1[1], g2+G_shift1[2]) * ita(g1+G_shift2[1], g2+G_shift2[2])
 
-            q2l2 = (qq1^2 + qq2^2 - qq1*qq2) * Gl^2
-            
-            V_total += sign * phase * V_Haldane_bilayer(qq1, qq2; SameLayer = (ci1==ci2)) * exp(-0.5 * q2l2)
+            V_total += sign * phase * V_int.V_q(qq1, qq2)
         end
 
         return V_total
     end
 
 
-
-
-
-    # mix * Haldane + (1-mix) * Coulomb
-    function V_int_mixing_monolayer(kf1, kf2, ki2, ki1, cf1=1, cf2=1, ci2=1, ci1=1)::ComplexF64
-        
-        # Calculate momentum transfer (modulo reciprocal lattice)
-        q = BZ(ki1 .- kf1)
-        G_shift1 = round.(Int64, ki1 .- kf1 .- q, RoundNearest)
-        G_shift2 = round.(Int64, kf2 .- ki2 .- q, RoundNearest)
-
-        V_total = ComplexF64(0.0)
-        # Sum over reciprocal lattice vectors for convergence
-        # Nshell = 3 provides good convergence for this system
-        Nshell = 3
-        for g1 in -Nshell:Nshell, g2 in -Nshell:Nshell
-            if abs(g1-g2) > Nshell
-                continue
-            end
-
-            # Construct the full momentum transfer including reciprocal lattice
-            qq1 = q[1] + g1
-            qq2 = q[2] + g2
-
-            # Calculate phase factors from magnetic translation algebra
-            # These phases ensure proper commutation relations and gauge invariance
-            phase_angle = ql_cross(ki1, kf1)
-            phase_angle += ql_cross(ki1 .+ kf1, (qq1, qq2) )
-            phase_angle += ql_cross(ki2, kf2)
-            phase_angle += ql_cross(ki2 .+ kf2, (-qq1, -qq2) )
-
-            phase = cispi(phase_angle)
-            sign = ita(g1+G_shift1[1], g2+G_shift1[2]) * ita(g1+G_shift2[1], g2+G_shift2[2])
-
-            q2l2 = (qq1^2 + qq2^2 - qq1*qq2) * Gl^2
-            
-            V_total += sign * phase * V_mixing_monolayer(qq1, qq2) * exp(-0.5 * q2l2)
-        end
-
-        return V_total
-    end
-
-
-
-    # mix * Haldane + (1-mix) * Coulomb
-    function V_int_mixing_bilayer(kf1, kf2, ki2, ki1, cf1, cf2, ci2, ci1)::ComplexF64
-        
-        # Layer conservation: interaction must conserve layer indices
-        if ci1 != cf1 || ci2 != cf2
-            return 0.0 + 0.0im
-        end
-
-        # Calculate momentum transfer (modulo reciprocal lattice)
-        q = BZ(ki1 .- kf1)
-        G_shift1 = round.(Int64, ki1 .- kf1 .- q, RoundNearest)
-        G_shift2 = round.(Int64, kf2 .- ki2 .- q, RoundNearest)
-
-        V_total = ComplexF64(0.0)
-        # Sum over reciprocal lattice vectors for convergence
-        # Nshell = 3 provides good convergence for this system
-        Nshell = 3
-        for g1 in -Nshell:Nshell, g2 in -Nshell:Nshell
-            if abs(g1-g2) > Nshell
-                continue
-            end
-
-            # Construct the full momentum transfer including reciprocal lattice
-            qq1 = q[1] + g1
-            qq2 = q[2] + g2
-
-            # Calculate phase factors from magnetic translation algebra
-            # These phases ensure proper commutation relations and gauge invariance
-            phase_angle = ql_cross(ki1, kf1)
-            phase_angle += ql_cross(ki1 .+ kf1, (qq1, qq2) )
-            phase_angle += ql_cross(ki2, kf2)
-            phase_angle += ql_cross(ki2 .+ kf2, (-qq1, -qq2) )
-
-            phase = cispi(phase_angle)
-            sign = ita(g1+G_shift1[1], g2+G_shift1[2]) * ita(g1+G_shift2[1], g2+G_shift2[2])
-
-            q2l2 = (qq1^2 + qq2^2 - qq1*qq2) * Gl^2
-            
-            V_total += sign * phase * V_mixing_bilayer(qq1, qq2; SameLayer = (ci1==ci2)) * exp(-0.5 * q2l2)
-        end
-
-        return V_total
-    end
 
 
 
