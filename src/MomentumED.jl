@@ -15,7 +15,7 @@ export ED_sortedScatteringList_onebody
 export ED_sortedScatteringList_twobody
 
 # main solving function
-export EDsolve, ED_apply
+export EDsolve, ED_apply, ED_expt
 
 # analysis
 export ED_onebody_rdm
@@ -183,27 +183,61 @@ function EDsolve(sorted_mbs_block_list::Vector{<: MBS64},
     return vals, vecs
 end
 
-function ED_apply(operator::Scattering{N}, vec_in::Vector{Complex{F}},
-    basis::Vector{MBS64{bits}}; check_in_space::Bool = true
-    )::Vector{Complex{F}} where{N, bits, F <: Real}
+"""
+(need more documents) apply an operator on a state.
+"""
+function ED_apply(operator::Scattering{N}, vec_in::Vector{Complex{F}}, dict::Dict{MBS64{bits}, Int};
+    check_in_space::Bool = true )::Vector{Complex{F}} where{N, bits, F <: Real}
 
-    @assert operator.in[1] <= bits && operator.out[1] <= bits "The operator applies on more than the basis dimension."
-    @assert length(basis) == length(vec_in) "The vector and basis have different lenght."
+    @assert operator.in[1] <= bits && operator.out[1] <= bits "The operator applies on more than the Hilbert space dimension."
+    @assert length(dict) == length(vec_in) "The vector and basis have different length."
 
-    vec_out = zeros{Complex{F}, length(basis)}
+    vec_out = zeros(Complex{F}, length(dict))
     
-    dict = create_state_mapping(basis)
-    for (j, mbs_in) in enumerate(basis)
-        amp, mbs_out = operator * mbs_in
-        i = get(dict, mbs_out.n, 0)
+    for (mbs_in, j) in dict
+        amp, mbs_out = operator * reinterpret(MBS64{bits}, mbs_in)
+        i = get(dict, mbs_out, 0)
         if i == 0
-            check_in_space && throw(AssertionError("The operator scatters incident state outside the assigned Hilbert space."))
+            check_in_space && throw(AssertionError("The operator does not preserve the assigned Hilbert subspace."))
         else
             vec_out[i] += amp * vec_in[j]
         end
     end
 
     return vec_out
+end
+@inline function ED_apply(operator::Scattering{N}, vec_in::Vector{Complex{F}}, basis::Vector{MBS64{bits}};
+    check_in_space::Bool = true)::Vector{Complex{F}} where{N, bits, F <: Real}
+    
+    return ED_apply(operator, vec_in, create_state_mapping(basis); check_in_space)
+end
+
+"""
+(need more documents) return the expectation value of operator in a state.
+"""
+function ED_expt(operator::Scattering{N}, vec_in::Vector{Complex{F}}, dict::Dict{MBS64{bits}, Int};
+    check_in_space::Bool = true)::Complex{F} where{N, bits, F <: Real}
+
+    @assert operator.in[1] <= bits && operator.out[1] <= bits "The operator applies on more than the Hilbert space dimension."
+    @assert length(dict) == length(vec_in) "The vector and basis have different lengths."
+
+    expectation::Complex{F} = 0.0
+    for (mbs_in, j) in dict
+        amp, mbs_out = operator * reinterpret(MBS64{bits}, mbs_in)
+        i = get(dict, mbs_out, 0)
+        if i == 0
+            check_in_space && throw(AssertionError("The operator does not preserve the assigned Hilbert subspace."))
+        else
+            expectation += conj(vec_in[i]) * amp * vec_in[j]
+        end
+    end
+
+    return expectation
+end
+@inline function ED_expt(operator::Scattering{N}, vec_in::Vector{Complex{F}}, basis::Vector{MBS64{bits}};
+    check_in_space::Bool = true)::Complex{F} where{N, bits, F <: Real}
+
+    return ED_expt(operator, vec_in, create_state_mapping(basis); check_in_space)
 end
 
 

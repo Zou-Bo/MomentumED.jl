@@ -61,7 +61,7 @@ function HmltMatrix_threaded(
             for scat in scat_list
                 amp, mbs_out = scat * mbs_in
                 if !iszero(amp)
-                    # i = get(state_mapping, mbs_out.n, 0)
+                    # i = get(state_mapping, mbs_out, 0)
                     i = my_searchsortedfirst(sorted_mbs_block_list, mbs_out)
                     @assert i != 0 "H is not momentum- or component-conserving."
                     push!(thread_I[tid], i)
@@ -79,7 +79,7 @@ function HmltMatrix_threaded(
                 #         mbs_mid = empty!(mbs_in, scat.in...; check=false)
                 #         if isempty(mbs_mid, scat.out...)
                 #             mbs_out = occupy!(mbs_mid, scat.out...; check=false)
-                #             # i = get(state_mapping, mbs_out.n, 0)
+                #             # i = get(state_mapping, mbs_out, 0)
                 #             i = my_searchsortedfirst(sorted_mbs_block_list, mbs_out)
                 #             @assert i != 0 "H is not momentum- or component-conserving."
 

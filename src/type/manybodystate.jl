@@ -44,7 +44,7 @@ function Base.show(io::IO, mbs::MBS64{bits}) where bits
 end
 
 # Basic operations
-import Base: *, <, ==
+import Base: *, <, ==, hash
 
 """
     *(mbs1::MBS64{b1}, mbs2::MBS64{b2}) where {b1, b2}
@@ -72,6 +72,11 @@ Check equality of two MBS64 states. Different bit sizes are never equal.
 function ==(mbs1::MBS64{b}, mbs2::MBS64{b}) where {b}
     mbs1.n == mbs2.n
 end
+
+==(mbs::MBS64, i::Integer) = mbs.n == i
+==(i::Integer, mbs::MBS64) = mbs.n == i
+
+hash(mbs::MBS64) = hash(mbs.n)
 
 # Occupation and state manipulation
 

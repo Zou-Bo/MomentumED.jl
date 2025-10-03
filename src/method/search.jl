@@ -24,12 +24,12 @@ This eliminates the my_searchsortedfirst bottleneck by providing direct state-to
 - `sorted_mbs_block_list::Vector{MBS64{bits}}`: Sorted list of MBS64 basis states
 
 # Returns
-- `Dict{Int, Int}`: Mapping from state integer representation to matrix index
+- `Dict{MBS64{bits}, Int}`: Mapping from state integer representation to matrix index
 """
-function create_state_mapping(sorted_mbs_block_list::Vector{MBS64{bits}}) where {bits}
-    mapping = Dict{Int, Int}()
-    for (i, state) in enumerate(sorted_mbs_block_list)
-        mapping[state.n] = i
+function create_state_mapping(mbs_list::Vector{MBS64{bits}}) where {bits}
+    mapping = Dict{MBS64{bits}, Int}()
+    for (i, state) in enumerate(mbs_list)
+        mapping[state] = i
     end
     return mapping
 end
