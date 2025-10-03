@@ -245,7 +245,7 @@ module LLT
 
             sign = ita(g1+G_shift1[1], g2+G_shift1[2]) * ita(g1+G_shift2[1], g2+G_shift2[2])
 
-            V_total += sign * phase * V_int.V_q(qq1, qq2)
+            V_total += sign * phase * V_int.V_q(qq1, qq2, ci1==ci2)
         end
 
         return V_total
