@@ -163,7 +163,7 @@ The package uses KrylovKit for sparse matrix diagonalization:
 
 ```julia
 # Sparse matrix construction from scattering terms
-H = HmltMatrix_threaded(block, scat_list1, scat_list2, multi_thread)
+H = ED_HamiltonianMatrix_threaded(block, scat_list1, scat_list2, multi_thread)
 
 # KrylovKit eigensolve
 vals, vecs, info = eigsolve(H, vec0, N_eigen, :SR, ishermitian=true)

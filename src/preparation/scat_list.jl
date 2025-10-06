@@ -15,7 +15,7 @@ them to scattering terms with proper normal ordering.
 # Details
 - Maps component indices to global orbital indices using: `global_index = k + Nk * (ch - 1) + Nk * Nch * (cc - 1)`
 - Applies normal ordering to avoid double-counting
-- Uses `sortMergeScatteringList` to eliminate duplicates and sort terms
+- Uses `sort_merge_scatlist` to eliminate duplicates and sort terms
 - Only includes non-zero amplitude terms
 
 # Example
@@ -43,7 +43,7 @@ function ED_sortedScatteringList_onebody(para::EDPara)
         end
     end
     
-    return sortMergeScatteringList(sct_list1)
+    return sort_merge_scatlist(sct_list1)
 end
 
 
@@ -358,7 +358,7 @@ If the momentum index is used, no input of momentum shift for twisted boundary c
 - Applies normal ordering: `minmax(i1, i2) >= minmax(f1, f2)`
 - Includes both direct and exchange contributions: `amp = amp_direct - amp_exchange`
 - Uses momentum shift in interaction calculations: `(k_list .+ kshift) ./ Gk`
-- Applies `sortMergeScatteringList` to eliminate duplicates and sort terms
+- Applies `sort_merge_scatlist` to eliminate duplicates and sort terms
 
 # Example
 ```julia
@@ -389,5 +389,5 @@ function ED_sortedScatteringList_twobody(para::EDPara; kshift::Tuple{Float64, Fl
     end
 
     
-    return sortMergeScatteringList(sct_list2)
+    return sort_merge_scatlist(sct_list2)
 end

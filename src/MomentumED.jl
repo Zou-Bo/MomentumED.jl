@@ -6,7 +6,7 @@ This module only sets sectors of total (crystal) momentum, also called blocks.
 module MomentumED
 
 # type
-public MBS64, Scattering
+export MBS64, MBS64Vector, Scattering, MBSOperator
 
 # preparation
 public ED_mbslist_onecomponent
@@ -15,7 +15,7 @@ export ED_sortedScatteringList_onebody
 export ED_sortedScatteringList_twobody
 
 # main solving function
-export EDsolve, ED_apply, ED_expt
+export EDsolve
 
 # analysis
 export ED_onebody_rdm
@@ -30,6 +30,7 @@ using KrylovKit
 # Include utilities
 include("type/manybodystate.jl")
 include("type/scattering.jl")
+include("type/operator_on_state.jl")
 include("preparation/init_parameter.jl")
 include("preparation/momentum_decomposition.jl")
 include("preparation/scat_list.jl")
@@ -76,22 +77,25 @@ println("Ground state energy: ", vals[1])
 """
 function matrix_solve(
     H::SparseMatrixCSC{Complex{eltype}}, N_eigen::Int64;
-    vec0::Vector{Complex{eltype}} = rand(Complex{eltype}, H.m),
     ishermitian = true, krylovkit_kwargs...
 )::Tuple{Vector{eltype}, Vector{Vector{Complex{eltype}}}, Any} where {eltype<:AbstractFloat}
 
+    vec0 = rand(Complex{eltype}, H.m)
+
     N_eigen = min(N_eigen, H.m)
-    vals, vecs, info = eigsolve(H, vec0, N_eigen, :SR; ishermitian=ishermitian, krylovkit_kwargs...)
+    vals, vecs, info = eigsolve(H, vec0, N_eigen, :SR; ishermitian, krylovkit_kwargs...)
     return view(vals, 1:N_eigen), view(vecs, 1:N_eigen), info
 end
 
 
 """
-    EDsolve(sorted_mbs_block_list::Vector{MBS64{bits}}, 
-           sorted_onebody_scat_list::Vector{Scattering{1}},
-           sorted_twobody_scat_list::Vector{Scattering{2}},
-           N_eigen::Int64=6; showtime::Bool = false, converge_warning::Bool=false,
-           krylovkit_kwargs...) -> (vals, vecs)
+    EDsolve(
+        sorted_mbs_block_list::Vector{<: MBS64}, 
+        sorted_scat_lists::Vector{<: Scattering}...;
+        N::Int64 = 6, showtime = false, method = :sparse,
+        element_type::Type = Float64, index_type::Type = Int64, 
+        min_sparse_dim::Int64 = 100, max_dense_dim::Int64 = 200,
+        krylovkit_kwargs...) -> (vals, vecs)
 
 Main interface function for exact diagonalization of momentum-conserved quantum systems.
 Constructs the sparse Hamiltonian matrix from scattering lists and diagonalizes it.
@@ -123,18 +127,30 @@ energies, wavefunctions = EDsolve(blocks[1], scattering1, scattering2; N=1)
 println("Ground state energy: ", energies[1])
 ```
 """
-function EDsolve(sorted_mbs_block_list::Vector{<: MBS64}, 
-    sorted_scat_lists::Vector{<: Scattering}...;
-    N::Int64=6, showtime = false, method = :sparse, 
+function EDsolve(
+    sorted_mbs_block_list::Vector{<: MBS64}, sorted_scat_lists::Vector{<: Scattering}...;
+    N::Int64 = 6, showtime = false, method = :sparse,
     element_type::Type = Float64, index_type::Type = Int64, 
-    vec0::Vector{<: Complex} = rand(Complex{element_type}, length(sorted_mbs_block_list)),
+    min_sparse_dim::Int64 = 100, max_dense_dim::Int64 = 200,
     krylovkit_kwargs...)
+
+
 
     if method == :map
 
         error("Linear map method is under development. Please use :sparse or :dense method.")
 
     elseif method == :sparse || method == :dense
+
+        @assert max_dense_dim > min_sparse_dim
+        if method == :sparse && length(sorted_mbs_block_list) < min_sparse_dim
+            @warn "Hilbert space dimension < $min_sparse_dim; switch to method=:dense automatically."
+            method == :dense
+        end
+        if method == :dense && length(sorted_mbs_block_list) > max_dense_dim
+            @warn "Hilbert space dimension > $max_dense_dim; switch to method=:sparse automatically."
+            method == :sparse
+        end
 
         # Construct sparse Hamiltonian matrix from scattering terms
         if showtime
@@ -151,9 +167,9 @@ function EDsolve(sorted_mbs_block_list::Vector{<: MBS64},
 
             # Solve the eigenvalue problem
             if showtime
-                @time vals, vecs, _ = matrix_solve(H, N; vec0 = vec0, krylovkit_kwargs...)
+                @time vals, vecs, _ = matrix_solve(H, N; krylovkit_kwargs...)
             else
-                vals, vecs, _ = matrix_solve(H, N; vec0 = vec0, krylovkit_kwargs...)
+                vals, vecs, _ = matrix_solve(H, N; krylovkit_kwargs...)
             end
 
         elseif method == :dense
@@ -183,61 +199,12 @@ function EDsolve(sorted_mbs_block_list::Vector{<: MBS64},
     return vals, vecs
 end
 
-"""
-(need more documents) apply an operator on a state.
-"""
-function ED_apply(operator::Scattering{N}, vec_in::Vector{Complex{F}}, dict::Dict{MBS64{bits}, Int};
-    check_in_space::Bool = true )::Vector{Complex{F}} where{N, bits, F <: Real}
+function EDsolve(
+    HilbertSubspace::Dict{MBS64{bits}, idtype}, HamiltonianOperator::MBSOperator{eltype};
+    N::Int64 = 6, showtime = false, method = :sparse, 
+    min_sparse_dim::Int64 = 100, max_dense_dim::Int64 = 200,
+    krylovkit_kwargs...) where{bits, eltype, idtype}
 
-    @assert operator.in[1] <= bits && operator.out[1] <= bits "The operator applies on more than the Hilbert space dimension."
-    @assert length(dict) == length(vec_in) "The vector and basis have different length."
-
-    vec_out = zeros(Complex{F}, length(dict))
-    
-    for (mbs_in, j) in dict
-        amp, mbs_out = operator * reinterpret(MBS64{bits}, mbs_in)
-        i = get(dict, mbs_out, 0)
-        if i == 0
-            check_in_space && throw(AssertionError("The operator does not preserve the assigned Hilbert subspace."))
-        else
-            vec_out[i] += amp * vec_in[j]
-        end
-    end
-
-    return vec_out
-end
-@inline function ED_apply(operator::Scattering{N}, vec_in::Vector{Complex{F}}, basis::Vector{MBS64{bits}};
-    check_in_space::Bool = true)::Vector{Complex{F}} where{N, bits, F <: Real}
-    
-    return ED_apply(operator, vec_in, create_state_mapping(basis); check_in_space)
-end
-
-"""
-(need more documents) return the expectation value of operator in a state.
-"""
-function ED_expt(operator::Scattering{N}, vec_in::Vector{Complex{F}}, dict::Dict{MBS64{bits}, Int};
-    check_in_space::Bool = true)::Complex{F} where{N, bits, F <: Real}
-
-    @assert operator.in[1] <= bits && operator.out[1] <= bits "The operator applies on more than the Hilbert space dimension."
-    @assert length(dict) == length(vec_in) "The vector and basis have different lengths."
-
-    expectation::Complex{F} = 0.0
-    for (mbs_in, j) in dict
-        amp, mbs_out = operator * reinterpret(MBS64{bits}, mbs_in)
-        i = get(dict, mbs_out, 0)
-        if i == 0
-            check_in_space && throw(AssertionError("The operator does not preserve the assigned Hilbert subspace."))
-        else
-            expectation += conj(vec_in[i]) * amp * vec_in[j]
-        end
-    end
-
-    return expectation
-end
-@inline function ED_expt(operator::Scattering{N}, vec_in::Vector{Complex{F}}, basis::Vector{MBS64{bits}};
-    check_in_space::Bool = true)::Complex{F} where{N, bits, F <: Real}
-
-    return ED_expt(operator, vec_in, create_state_mapping(basis); check_in_space)
 end
 
 

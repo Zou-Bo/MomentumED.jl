@@ -1,3 +1,7 @@
+
+using Combinatorics
+using LinearAlgebra
+
 """
     Scattering{N} - Represents an N-body scattering term in the Hamiltonian
     
@@ -65,15 +69,41 @@ Generate a scattering term with normal ordering (now working for N = 1, 2)
 term: V * c†_i1 c†_i2 ... c†_iN c_jN ... c_j2 c_j1 (j-in, i-out )
 (1) j1 > j2 > ... > jN (no equality)
 (2) i1 > i2 > ... > iN (no equality)
+Hermitian Upper Triangular:
 (3) j1 > i1 or j1 = i1 && j2 > i2 or j1,j2 = i1,i2 && j3 > i3 or ... or j1,...,jN-1 = i1,...,iN-1 && jN >= iN
+or equlivantly in Julia's grammer
+(3') (j1,...,jN) >= (i1,...,iN)
 """
-function NormalScattering(V, i, j)
+function NormalScattering(V::ComplexF64, ij::Int64...; hermitian_upper_triangular::Bool = true)::Scattering
+    @assert iseven(length(ij)) "number conservation requires annihilated and created indices number being even"
+    N = length(ij) ÷ 2
+    @assert N >= 3
+
+    is = collect(ij[1:N])
+    js = collect(ij[2N:-1:N+1])
+
+    i_sort = sortperm(is, rev = true)
+    j_sort = sortperm(js, rev = true)
+    i_sorted = is[i_sort]
+    j_sorted = js[j_sort]
+    if isodd(parity(i_sort) + parity(j_sort))
+        V = -V
+    end
+
+    if j_sorted < i_sorted && hermitian_upper_triangular
+        i_sorted, j_sorted = j_sorted, i_sorted
+        V = conj(V)
+    end
+
+    return Scattering{N}(V, tuple(i_sorted), tuple(j_sorted))
+end
+function NormalScattering(V::ComplexF64, i::Int64, j::Int64; hermitian_upper_triangular::Bool = true)::Scattering{1}
     # N = 1
     
     # Apply normal ordering rules
 
     # j >= i
-    if j < i
+    if j < i && hermitian_upper_triangular
         j, i = i, j
         V = conj(V)
     end
@@ -82,9 +112,9 @@ function NormalScattering(V, i, j)
         V = real(V) + 0im
     end
 
-    return Scattering(V, i, j)
+    return Scattering{1}(V, (i,), (j,))
 end
-function NormalScattering(V, i1, i2, j2, j1)
+function NormalScattering(V::ComplexF64, i1::Int64, i2::Int64, j2::Int64, j1::Int64; hermitian_upper_triangular::Bool = true)::Scattering{2}
     # N = 2
     
     # Apply normal ordering rules
@@ -108,22 +138,27 @@ function NormalScattering(V, i1, i2, j2, j1)
     end
     
     # j1 > i1 or j1 = i1 && j2 > i2
-    if j1 < i1 || (j1 == i1 && j2 < i2)
+    if (j1, j2) < (i1, i2) && hermitian_upper_triangular
         j1, i1 = i1, j1
         j2, i2 = i2, j2
         V = conj(V)
     end
 
-    if j1 == i1 && j2 == i2
+    if (j1, j2) == (i1, i2)
         V = real(V) + 0im
     end
-    # @show V, i1, i2, j2, j1
-    return Scattering(V, i1, i2, j2, j1)
+    return Scattering{2}(V, (i1, i2), (j1, j2))
 end
-isnormal(x::Scattering{1}) = x.in >= x.out
-isnormal(x::Scattering{2}) = x.in[1] > x.in[2] && x.out[1] > x.out[2] && x.in >= x.out
+isnormal(x::Scattering)::Bool = issorted(x.in; rev=true) && issorted(x.out; rev=true)
+isnormalupper(x::Scattering)::Bool = isnormal(x) && x.in >= x.out
 
 
+import Base: adjoint
+function adjoint(s::Scattering{N})::Scattering{N} where {N}
+    Scattering{N}(conj(s.Amp), s.in, s.out)
+end
+import LinearAlgebra: ishermitian
+ishermitian(s::Scattering)::Bool = s.in == s.out
 
 
 
@@ -140,13 +175,21 @@ end
 
 
 
+
 """
 Sort and merge a list of normalized scattering terms
 """
-function sortMergeScatteringList(normal_sct_list::Vector{Scattering{N}})::Vector{Scattering{N}} where {N}
-    @assert N == 1 || N == 2 "Only normal ordering of 1-body and 2-body scattering terms are supported"
-    @assert all(isnormal, normal_sct_list) "All scattering terms must be normalized"
-    sorted_list = sort(normal_sct_list)
+function sort_merge_scatlist(normal_sct_list::Vector{Scattering{N}};
+    check_normal::Bool = true, check_normalupper::Bool = true
+    )::Vector{Scattering{N}} where {N}
+
+    if check_normalupper
+        @assert all(isnormalupper, normal_sct_list) "All scattering terms must be in normal order and in the upper triangular."
+    elseif check_normal
+        @assert all(isnorm, normal_sct_list) "All scattering terms must be in normal order."
+    end
+
+       sorted_list = sort(normal_sct_list)
     merged_list = Vector{Scattering{N}}()
     for sct in sorted_list
         if !isempty(merged_list) && sct == merged_list[end]
@@ -160,28 +203,47 @@ end
 
 
 
+
 """
-(need detailed document.)
-Applying a scatter operator on a many-body basis. Return the amplitute and the output many-body basis.
-The amplitute is zero if no output state.
-"""
-function *(scat::Scattering, mbs_in::MBS64{bits})::Tuple{ComplexF64, MBS64{bits}} where {bits}
-    if isoccupied(mbs_in, scat.in...)
-        if scat.in == scat.out
-            mbs_out = mbs_in
-            return scat.Amp, mbs_out
-        else
-            mbs_mid = empty!(mbs_in, scat.in...; check = false)
-            if isempty(mbs_mid, scat.out...)
-                mbs_out = occupy!(mbs_mid, scat.out...; check = false)
-                amp = scat.Amp
-                if isodd(scat_occ_number(mbs_mid, scat.in) + scat_occ_number(mbs_mid, scat.out))
-                    amp = -amp
-                end
-                return amp, mbs_out
-            end
-        end
+    struct MBSOperator{F <: Real, I <: Integer} <: AbstractMatrix{Complex{F}}
+        scats::Vector{<:Scattering}
+        upper_triangular::Bool
     end
-    return 0.0, mbs_in
+
+Expand an operator in a list of Scattering terms.
+When upper_triangular is true, the list contain only upper-triangular terms.
+
+In construction of operators, all the scattering terms automatically passed checking isnormal() or isnormalupper().
+Terms of the same scatter-in and -out states are merged. 
+"""
+struct MBSOperator{F <: Real} <: AbstractMatrix{Complex{F}}
+    scats::Vector{<:Scattering}
+    upper_triangular::Bool
+
+    function MBSOperator{F}(scats::Vector{<:Scattering}...; upper_triangular::Bool) where {F<:Real}
+        allscats = reduce(vcat, scats)
+        if upper_triangular
+            @assert all(isnormalupper,  allscats) "Scattering terms should all in normal order and in the upper triangular."
+        else
+            @assert all(isnormal, allscats) "Scattering terms should all in normal order."
+        end
+        sort_merge_scats = sort_merge_scatlist(allscats; check_normal=false, check_normalupper=false)
+        return new{F}(sort_merge_scats, upper_triangular)
+    end
+
 end
 
+
+ishermitian(op::MBSOperator)::Bool = op.upper_triangular
+function adjoint!(op::MBSOperator{F})::MBSOperator{F} where {F}
+    if !ishermitian(op)
+        for i in eachindex(op.scats)
+            op.scats[i] = adjoint(op.scats[i])
+        end
+    end
+    return op
+end
+function adjoint(op::MBSOperator{F})::MBSOperator{F} where {F}
+    op_new = deepcopy(op)
+    return adjoint!(op_new)
+end

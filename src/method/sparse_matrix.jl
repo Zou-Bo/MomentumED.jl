@@ -10,7 +10,7 @@ include("search.jl")
 
 
 """
-    HmltMatrix_threaded(sorted_mbs_block_list, sorted_onebody_scat_list, sorted_twobody_scat_list, n_threads=Threads.nthreads())
+    HmltMatrix_threaded(sorted_mbs_block_list, sorted_scat_lists...)
 
 Threaded version of HmltMatrix with pre-computed state mapping and COO format construction.
 

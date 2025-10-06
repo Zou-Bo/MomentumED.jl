@@ -1,3 +1,6 @@
+
+using Combinatorics
+
 """
     MBS64{bits} <: Integer
 
@@ -15,7 +18,7 @@ The `bits` parameter specifies how many orbitals are physically meaningful.
 Creates a new MBS64 with the given bit state, validating that the state
 fits within the specified number of bits.
 """
-struct MBS64{bits} <: Integer
+struct MBS64{bits} <: Unsigned
     n::UInt64
     
     function MBS64{bits}(state::UInt64) where {bits}
@@ -186,3 +189,71 @@ function scat_occ_number(mbs::MBS64{bits}, i_list::Vector{Int64}) where {bits}
 end
 scat_occ_number(mbs::MBS64, i_list::Tuple{Vararg{Int64}}) = scat_occ_number(mbs, collect(i_list))
 
+
+
+
+"""
+    create_state_mapping(sorted_mbs_block_list)
+
+Create a dictionary mapping from MBS64 states to their indices for O(1) lookup.
+This eliminates the my_searchsortedfirst bottleneck by providing direct state-to-index mapping.
+
+# Arguments
+- `sorted_mbs_block_list::Vector{MBS64{bits}}`: Sorted list of MBS64 basis states
+
+# Returns
+- `Dict{MBS64{bits}, Int}`: Mapping from state integer representation to matrix index
+"""
+function create_state_mapping(mbs_list::Vector{MBS64{bits}}, index_type::Type)::Dict{MBS64{bits}, index_type} where {bits}
+
+    @assert index_type <: Integer "index_type should be a Integer."
+    @assert length(mbs_list) <= typemax(index_type) "index type $index_type cannot cover the length of given MBS64 list."
+    @assert issorted(mbs_list) "Using unsorted mbs list will cause failure in ensuring the scatttering terms in upper triangular."
+
+    mapping = Dict{MBS64{bits}, index_type}()
+    for (i, state) in enumerate(mbs_list)
+        mapping[state] = i
+    end
+    return mapping
+end
+
+
+
+
+
+"""
+    struct MBS64Vector{bits, F, I} where {bits, F <: Real, I <: Integer}
+        vec::Vector{Complex{F}}
+        space::Dict{MBS64{bits}, I}
+    end
+
+A vector of components bounded to a hash table that specifies the Hilbert subspace.
+It represents a general many-body states in the basis of given MBS64{bits} list.
+
+To save the memory usage, all MBS64Vectors in the same subspace use the same hash table.
+"""
+struct MBS64Vector{bits, F <: Real, I <: Integer} <: AbstractVector{Complex{F}}
+    vec::Vector{Complex{F}}
+    space::Dict{MBS64{bits}, I}
+
+    function MBS64Vector{bits, F, I}(vec, space) where {bits, F<:Real, I<:Integer}
+        @assert length(vec) == length(space) "vector length mismatches Hilbert space dimension."
+        new(vec, space)
+    end
+end
+
+import Base: length, similar, copy
+import LinearAlgebra: dot
+length(mbs_vec::MBS64Vector) = length(mbs_vec.vec)
+function similar(mbs_vec::MBS64Vector{bits, F, I})::MBS64Vector{bits, F, I} where {bits, F, I}
+    return MBS64Vector{bits, F, I}(similar(mbs_vec.vec), mbs_vec.space)
+end
+function copy!(mbs_to::MBS64Vector{bits, F, I}, mbs_from::MBS64Vector{bits, F, I}) where {bits, F, I}
+    @assert mbs_to.space == mbs_from.space "mbs vectors are not in the same subspace."
+    mbs_to.vec .= mbs_from.vec
+    return nothing
+end
+function dot(mbs_bra::MBS64Vector{bits, F, I}, mbs_ket::MBS64Vector{bits, F, I})::Complex{F} where {bits, F, I}
+    @assert mbs_bra.space == mbs_ket.space "mbs vectors are not in the same subspace."
+    return dot(mbs_bra.vec, mbs_ket.vec)
+end

@@ -87,7 +87,7 @@ The package supports multi-threaded matrix construction:
 
 ```julia
 # Threaded sparse matrix assembly
-H = HmltMatrix_threaded(block, scat_list1, scat_list2, multi_thread)
+H = ED_HamiltonianMatrix_threaded(block, scat_list1, scat_list2, multi_thread)
 ```
 
 **Implementation**:

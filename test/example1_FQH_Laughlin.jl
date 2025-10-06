@@ -110,23 +110,6 @@ for i in eachindex(blocks)
 end
 
 
-#= Plot the energy spectrum
-using CairoMakie
-CairoMakie.activate!()
-
-begin
-    fig = Figure();
-    ax = Axis(fig[1, 1])
-    # Plot energy levels for each momentum block
-    for i in 1:length(blocks)
-        for e in energies[i]
-            scatter!(ax, i, e, color = :blue, marker=:hline)
-        end
-    end
-    xlims!(-0.2, 1.2+length(blocks))
-    fig
-end
-=#
 
 # Define the Landau level infinitesimal form factor
 function Landau_ff_inf(k_f, k_i, c=1)
