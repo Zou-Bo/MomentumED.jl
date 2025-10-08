@@ -10,13 +10,9 @@ include("search.jl")
 
 
 """
-    HmltMatrix_threaded(sorted_mbs_block_list, sorted_scat_lists...)
+    ED_HamiltonianMatrix_threaded(sorted_mbs_block_list, sorted_scat_lists...)
 
-Threaded version of HmltMatrix with pre-computed state mapping and COO format construction.
-
-This function provides the same functionality as HmltMatrix but uses multi-threading
-for parallel matrix construction and returns a standard SparseMatrixCSC instead of 
-ExtendableSparseMatrix.
+Threaded version of generating Hamiltonian Matrix with pre-computed state mapping and COO format construction.
 
 # Arguments
 - `sorted_mbs_block_list::Vector{<: MBS64}`: Sorted basis states for momentum block
@@ -33,7 +29,7 @@ ExtendableSparseMatrix.
 Uses COO format construction with thread-local storage for better parallel performance.
 Provides 4-8x speedup for medium to large systems compared to the basic version.
 """
-function HmltMatrix_threaded(
+function ED_HamiltonianMatrix_threaded(
     sorted_mbs_block_list::Vector{<: MBS64}, 
     sorted_scat_lists::Vector{<: Scattering}...;
     element_type::Type = Float64, index_type::Type = Int64,

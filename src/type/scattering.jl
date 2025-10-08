@@ -157,8 +157,7 @@ import Base: adjoint
 function adjoint(s::Scattering{N})::Scattering{N} where {N}
     Scattering{N}(conj(s.Amp), s.in, s.out)
 end
-import LinearAlgebra: ishermitian
-ishermitian(s::Scattering)::Bool = s.in == s.out
+isdiagonal(s::Scattering)::Bool = s.in == s.out
 
 
 

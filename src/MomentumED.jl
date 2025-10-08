@@ -7,12 +7,17 @@ module MomentumED
 
 # type
 export MBS64, MBS64Vector, Scattering, MBSOperator
+public get_bits, create_state_mapping
+export ED_bracket, ED_bracket_threaded, multiplication_threaded
 
 # preparation
 public ED_mbslist_onecomponent
 export EDPara, ED_mbslist, ED_momentum_block_division
 export ED_sortedScatteringList_onebody
 export ED_sortedScatteringList_twobody
+
+# methods
+public ED_HamiltonianMatrix_threaded
 
 # main solving function
 export EDsolve
@@ -75,7 +80,7 @@ println("Ground state energy: ", vals[1])
 - Automatically handles convergence warnings from KrylovKit
 - For better control over convergence, consider using KrylovKit directly
 """
-function matrix_solve(
+function krylov_matrix_solve(
     H::SparseMatrixCSC{Complex{eltype}}, N_eigen::Int64;
     ishermitian = true, krylovkit_kwargs...
 )::Tuple{Vector{eltype}, Vector{Vector{Complex{eltype}}}, Any} where {eltype<:AbstractFloat}
@@ -154,11 +159,11 @@ function EDsolve(
 
         # Construct sparse Hamiltonian matrix from scattering terms
         if showtime
-            @time H = HmltMatrix_threaded(sorted_mbs_block_list, sorted_scat_lists...;
+            @time H = ED_HamiltonianMatrix_threaded(sorted_mbs_block_list, sorted_scat_lists...;
                 element_type = element_type, index_type = index_type
             )
         else
-            H = HmltMatrix_threaded(sorted_mbs_block_list, sorted_scat_lists...;
+            H = ED_HamiltonianMatrix_threaded(sorted_mbs_block_list, sorted_scat_lists...;
                 element_type = element_type, index_type = index_type
             )
         end
@@ -167,9 +172,9 @@ function EDsolve(
 
             # Solve the eigenvalue problem
             if showtime
-                @time vals, vecs, _ = matrix_solve(H, N; krylovkit_kwargs...)
+                @time vals, vecs, _ = krylov_matrix_solve(H, N; krylovkit_kwargs...)
             else
-                vals, vecs, _ = matrix_solve(H, N; krylovkit_kwargs...)
+                vals, vecs, _ = krylov_matrix_solve(H, N; krylovkit_kwargs...)
             end
 
         elseif method == :dense
@@ -206,6 +211,7 @@ function EDsolve(
     krylovkit_kwargs...) where{bits, eltype, idtype}
 
 end
+
 
 
 include("analysis/onebody_reduced_density_matrix.jl")
