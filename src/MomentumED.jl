@@ -150,11 +150,11 @@ function EDsolve(
         @assert max_dense_dim > min_sparse_dim
         if method == :sparse && length(sorted_mbs_block_list) < min_sparse_dim
             @warn "Hilbert space dimension < $min_sparse_dim; switch to method=:dense automatically."
-            method == :dense
+            method = :dense
         end
         if method == :dense && length(sorted_mbs_block_list) > max_dense_dim
             @warn "Hilbert space dimension > $max_dense_dim; switch to method=:sparse automatically."
-            method == :sparse
+            method = :sparse
         end
 
         # Construct sparse Hamiltonian matrix from scattering terms
@@ -180,7 +180,7 @@ function EDsolve(
         elseif method == :dense
 
             dim = size(H, 1)
-            if dim > 2000
+            if dim > 1000
                 @warn "Dense diagonalization may be slow for dim=$dim. Consider using :sparse method."
             end
             N > dim && (N = dim)

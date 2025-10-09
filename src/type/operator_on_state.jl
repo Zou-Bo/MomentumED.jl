@@ -111,7 +111,7 @@ function mul_add!(collect_result::MBS64Vector{bits, eltype, idtype},
     for (mbs_in, j) in mbs_vec.space
         amp, mbs_out = scat * mbs_in
         # iszero(amp) && continue
-        i = get(mbs_vec.space, mbs_out, zero(idtype))
+        i = get(collect_result.space, mbs_out, zero(idtype))
         @boundscheck if iszero(i)
             throw(DimensionMismatch("The operator scatters the state out of its Hilbert subspace."))
         end
@@ -127,7 +127,7 @@ function mul!(mbs_vec_result::MBS64Vector{bits, eltype, idtype},
     op::MBSOperator{eltype}, mbs_vec::MBS64Vector{bits, eltype, idtype}
     ) where {bits, eltype <: AbstractFloat, idtype <: Integer}
     
-    @boundscheck mbs_vec_result.space == mbs_vec.space || throw(DimensionMismatch("mul! shouldn't change MBSVector Hilbert subspace."))
+    # @boundscheck mbs_vec_result.space == mbs_vec.space || throw(DimensionMismatch("mul! shouldn't change MBSVector Hilbert subspace."))
 
     mbs_vec_result.vec .= 0.0
     for scat in op.scats
@@ -175,13 +175,14 @@ It convinces the Julia compiler to use stack instead of heap.
 Notice: no checking whether mbs_bra and mbs_ket are in the same Hilbert space
 """
 function mul_add_bracket!(mbs_vec_bra::MBS64Vector{bits, eltype, idtype},
-    scat::Scattering{N}, mbs_vec_ket::MBS64Vector{bits, eltype, idtype},
-    upper_triangular::Bool)::Complex{eltype} where{N, bits, eltype <: AbstractFloat, idtype <: Integer}
+    scat::Scattering, mbs_vec_ket::MBS64Vector{bits, eltype, idtype},
+    upper_triangular::Bool)::Complex{eltype} where{bits, eltype <: AbstractFloat, idtype <: Integer}
 
     collect_result::Complex{eltype} = 0.0
     for (mbs_in, j) in mbs_vec_ket.space
         amp, mbs_out = scat * mbs_in
-        i = get(mbs_vec_ket.space, mbs_out, zero(idtype))
+        iszero(amp) && continue
+        i = get(mbs_vec_bra.space, mbs_out, zero(idtype))
         if iszero(i)
             @boundscheck throw(DimensionMismatch("The operator scatters the state out of its Hilbert subspace."))
         else
@@ -204,9 +205,9 @@ function ED_bracket(mbs_vec_bra::MBS64Vector{bits, eltype, idtype},
     op::MBSOperator{eltype}, mbs_vec_ket::MBS64Vector{bits, eltype, idtype}
     )::Complex{eltype} where {bits, eltype <: AbstractFloat, idtype <: Integer}
 
-    @boundscheck mbs_vec_bra.space == mbs_vec_ket.space || throw(DimensionMismatch(
-        """The "bra" and "ket" are not in the same Hilbert subspace."""
-    ))
+    # @boundscheck mbs_vec_bra.space == mbs_vec_ket.space || throw(DimensionMismatch(
+    #     """The "bra" and "ket" are not in the same Hilbert subspace."""
+    # ))
 
     bracket = Complex{eltype}(0.0)
     for scat in op.scats
@@ -227,6 +228,62 @@ function ED_bracket_threaded(mbs_vec_bra::MBS64Vector, op::MBSOperator, mbs_vec_
     # Final reduction
     return sum(thread_brackets)
 end
+
+
+
+
+
+function mul_add_bracket!(mbs_vec_bra::MBS64Vector{bits, eltype, idtype},
+    scat2::Scattering, scat1::Scattering, mbs_vec_ket::MBS64Vector{bits, eltype, idtype},
+    )::Complex{eltype} where{bits, eltype <: AbstractFloat, idtype <: Integer}
+
+    collect_result::Complex{eltype} = 0.0
+    for (mbs_in, j) in mbs_vec_ket.space
+        amp, mbs_out = scat2 * (scat1 * mbs_in)
+        iszero(amp) && continue
+        i = get(mbs_vec_bra.space, mbs_out, zero(idtype))
+        if iszero(i)
+            @show mbs_in
+            @show scat1
+            @show scat2
+            @show scat1 * mbs_in
+            @show scat2 * (scat1 * mbs_in)
+            @boundscheck throw(DimensionMismatch("The operator scatters the state out of its Hilbert subspace."))
+        else
+            collect_result += conj(mbs_vec_bra.vec[i]) * amp * mbs_vec_ket.vec[j]
+        end
+    end
+    return collect_result
+end
+
+function ED_bracket(mbs_vec_bra::MBS64Vector{bits, eltype, idtype}, 
+    op2::MBSOperator{eltype}, op1::MBSOperator{eltype}, mbs_vec_ket::MBS64Vector{bits, eltype, idtype}
+    )::Complex{eltype} where {bits, eltype <: AbstractFloat, idtype <: Integer}
+
+    # @boundscheck mbs_vec_bra.space == mbs_vec_ket.space || throw(DimensionMismatch(
+    #     """The "bra" and "ket" are not in the same Hilbert subspace."""
+    # ))
+
+    if op1.upper_triangular || op2.upper_triangular
+        println("one-by-one multiplication")
+        return ED_bracket(mbs_vec_bra, op2, op1*mbs_vec_ket)
+    end 
+
+    bracket = Complex{eltype}(0.0)
+    for scat1 in op1.scats
+        # @show scat1
+        for scat2 in op2.scats
+            # @show scat2
+            bracket += mul_add_bracket!(mbs_vec_bra, scat2, scat1, mbs_vec_ket)
+        end
+    end
+    return bracket
+end
+
+
+
+
+
 
 """
     state |> scat_or_operator = scat_or_operator(state) = scat_or_operator * state

@@ -310,7 +310,7 @@ It represents a general many-body states in the basis of given MBS64{bits} list.
 
 To save the memory usage, all MBS64Vectors in the same subspace use the same hash table.
 """
-struct MBS64Vector{bits, F <: Real, I <: Integer} <: AbstractVector{Complex{F}}
+struct MBS64Vector{bits, F <: Real, I <: Integer}
     vec::Vector{Complex{F}}
     space::Dict{MBS64{bits}, I}
 

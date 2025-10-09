@@ -215,7 +215,7 @@ When upper_triangular is true, the list contain only upper-triangular terms.
 In construction of operators, all the scattering terms automatically passed checking isnormal() or isnormalupper().
 Terms of the same scatter-in and -out states are merged. 
 """
-struct MBSOperator{F <: Real} <: AbstractMatrix{Complex{F}}
+struct MBSOperator{F <: Real}
     scats::Vector{<:Scattering}
     upper_triangular::Bool
 
