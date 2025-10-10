@@ -33,6 +33,7 @@ function plot_ed_spectrum(subtitle=nothing)
         push!(top_ticks[1], x)
         push!(top_ticks[2], string(i))
         for e in energies[i]
+            isnan(e) && continue
             scatter!(ax, x, e/Nk/LLT.W0, color = :blue, marker=:hline)
         end
     end
@@ -80,18 +81,18 @@ sys_int = LandauInteraction(
 sys_int.D_l = 10.0                  # Screening length D/l
 sys_int.d_l = 0.1                  # Inter-layer distance d/l
 # compute the pseudo-potential components
-intra_PP = LLT.pseudo_potential_decomposition.(0:15; same_layer = true,  D_l = sys_int.D_l, d_l = sys_int.d_l)
-inter_PP = LLT.pseudo_potential_decomposition.(0:15; same_layer = false, D_l = sys_int.D_l, d_l = sys_int.d_l)
-@show intra_PP
-@show inter_PP
+intra_PP = LLT.pseudo_potential_decomposition.(0:3; same_layer = true,  D_l = sys_int.D_l, d_l = sys_int.d_l)
+inter_PP = LLT.pseudo_potential_decomposition.(0:3; same_layer = false, D_l = sys_int.D_l, d_l = sys_int.d_l)
+@show intra_PP;
+@show inter_PP;
 
 # Haldane pseudo-potential
 sys_int.V_intra = [0.0; 0.8; 0.0; 0.0]          # Intralayer Haldane pseudo-potential in unit of W0
-sys_int.V_inter = [1.5; 0.1; 0.0; 0.0]          # Interlayer Haldane pseudo-potential in unit of W0
+sys_int.V_inter = [1.5; 0.0; 0.0; 0.0]          # Interlayer Haldane pseudo-potential in unit of W0
 
 # or use Coulomb interaction with a cutoff in m
-# sys_int.V_intra = copy(intra_PP)
-# sys_int.V_inter = copy(inter_PP)
+sys_int.V_intra = copy(intra_PP)
+sys_int.V_inter = copy(inter_PP)
 
 # choose a linear mixing between Haldane and Coulomb interaction
 sys_int.mix = 1                  # mix * Haldane + (1-mix) * Coulomb
@@ -109,7 +110,7 @@ para_bilayer = EDPara(
 
 NG = 2
 index_shift = NG .* Gk .+ 1
-densities = MBSOperator[density_operator(q1, q2, lf, li; 
+densities = MBOperator[density_operator(q1, q2, lf, li; 
         para = para_bilayer, form_factor = true)
     for q1 in -NG*Gk[1]:NG*Gk[1], q2 in -NG*Gk[2]:NG*Gk[2], lf = 1:2, li=1:2
 ];
@@ -118,7 +119,7 @@ function structure_factor_expectation(myvec)
     for q1 in -NG*Gk[1]:NG*Gk[1], q2 in -NG*Gk[2]:NG*Gk[2]
         for lf = 1:2, li = 1:2
             structure_factor[index_shift[1]+q1, index_shift[2]+q2, lf, li] = 
-                ED_bracket(myvec, 
+                ED_bracket_threaded(myvec, 
                     densities[index_shift[1]-q1, index_shift[2]-q2, li, lf], 
                     densities[index_shift[1]+q1, index_shift[2]+q2, lf, li], myvec
                 )
@@ -138,18 +139,18 @@ blocks, block_k1, block_k2, k0number =
     ED_momentum_block_division(para_bilayer, ED_mbslist(para_bilayer, (Ne1,Ne2)));
 display(length.(blocks))
 
-# Generate scattering lists for efficient Hamiltonian construction
-scat_list1_conserve = ED_sortedScatteringList_onebody(para_bilayer);
-scat_list2_conserve = ED_sortedScatteringList_twobody(para_bilayer);
+# Generate Scatter lists for efficient Hamiltonian construction
+scat_list1_conserve = ED_sortedScatterList_onebody(para_bilayer);
+scat_list2_conserve = ED_sortedScatterList_twobody(para_bilayer);
 
 
-Neigen = 15  # Number of eigenvalues to compute per block
+Neigen = 10  # Number of eigenvalues to compute per block
 energies = Vector{Vector{Float64}}(undef, length(blocks));
 vectors = Vector{Vector{Vector{ComplexF64}}}(undef, length(blocks));
-for i in eachindex(blocks)[]
+for i in eachindex(blocks)[1:1]
     println("Processing block #$i with size $(length(blocks[i])), momentum $(block_k1[i]), $(block_k2[i])")
     energies[i], vectors[i] = EDsolve(blocks[i], scat_list2_conserve, scat_list1_conserve;
-        N = Neigen, showtime=true
+        N = Neigen, showtime=true, krylovdim = 25, maxiter = 150, verbosity = 1
     )
 end
 
@@ -163,6 +164,23 @@ energies[bn]./Nk
 
 mapping = MomentumED.create_state_mapping(blocks[bn]);
 vec331_1 = MBS64Vector(vectors[bn][1], mapping);
+
+
+@time ED_bracket(vec331_1, densities[index_shift..., 1,1], vec331_1)
+@time ED_bracket_threaded(vec331_1, densities[index_shift..., 1,1], vec331_1)
+
+@time ED_bracket(vec331_1, 
+    densities[index_shift[1]+1, index_shift[2]+3, 1,1], 
+    densities[index_shift[1]-1, index_shift[2]-3, 1,1], vec331_1
+)
+@time ED_bracket_threaded(vec331_1, 
+    densities[index_shift[1]+1, index_shift[2]+3, 1,1], 
+    densities[index_shift[1]-1, index_shift[2]-3, 1,1], vec331_1
+)
+
+
+
+
 
 @time str_fac331_1 = structure_factor_expectation(vec331_1);
 maximum(abs.(imag.(str_fac331_1)))
@@ -195,7 +213,7 @@ str_fac_mystery[index_shift..., 2,1]
 
 
 
-let structure_factor = str_fac331_2
+let structure_factor = str_fac331_1
     layer = (1,2)
     fig = Figure();
     ax = Axis(fig[1,1])
@@ -210,7 +228,7 @@ end
 
 # many-body Chern number
 begin
-    bn =  7                    # block number
+    bn =  1                    # block number
     nstates = 1                # number of degenerating states
     
     # twist angle path for the Wilson loop integral
@@ -230,7 +248,7 @@ begin
 
         println("path point #$i \t $(path[i+1])")
 
-        scat_list = ED_sortedScatteringList_twobody(para_bilayer; kshift = path[i+1]);
+        scat_list = ED_sortedScatterList_twobody(para_bilayer; kshift = path[i+1]);
         vecs = EDsolve(blocks[bn], scat_list; N = 6,
             showtime = false,
         )[2][1:nstates]

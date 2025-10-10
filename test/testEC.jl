@@ -109,7 +109,7 @@ para_conserve = EDPara(
 
 NG = 2
 index_shift = NG .* Gk .+ 1
-densities = MBSOperator[density_operator(q1, q2, lf, li; para=para_conserve)
+densities = MBOperator[density_operator(q1, q2, lf, li; para=para_conserve)
     for q1 in -NG*Gk[1]:NG*Gk[1], q2 in -NG*Gk[2]:NG*Gk[2], lf = 1:2, li=1:2
 ];
 function structure_factor_expectation(myvec)
@@ -137,9 +137,9 @@ blocks, block_k1, block_k2, k0number =
     ED_momentum_block_division(para_conserve, ED_mbslist(para_conserve, (Ne1,Ne2)));
 display(length.(blocks))
 
-# Generate scattering lists for efficient Hamiltonian construction
-scat_list1_conserve = ED_sortedScatteringList_onebody(para_conserve);
-scat_list2_conserve = ED_sortedScatteringList_twobody(para_conserve);
+# Generate Scatter lists for efficient Hamiltonian construction
+scat_list1_conserve = ED_sortedScatterList_onebody(para_conserve);
+scat_list2_conserve = ED_sortedScatterList_twobody(para_conserve);
 
 
 Neigen = 10  # Number of eigenvalues to compute per block
@@ -253,7 +253,7 @@ begin
 
         println("path point #$i \t $(path[i+1])")
 
-        scat_list = ED_sortedScatteringList_twobody(para_conserve; kshift = path[i+1]);
+        scat_list = ED_sortedScatterList_twobody(para_conserve; kshift = path[i+1]);
         vecs = EDsolve(blocks[bn], scat_list; N = 6,
             showtime = false,
         )[2][1:nstates]

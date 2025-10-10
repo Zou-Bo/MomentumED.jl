@@ -302,7 +302,7 @@ module LLT
 
     # ρ_{cf, ci}(q) = Σ_{ki,kf} < kf| e^{iqr} | ki > * c†_{kf, cf} c_{ki, ci}
     function density_operator(q1::Int64, q2::Int64, cf::Int64, ci::Int64;
-        para::EDPara, form_factor::Bool)::MBSOperator
+        para::EDPara, form_factor::Bool)::MBOperator
         cp = para.V_int.components
         Gk = para.Gk
         k_list = para.k_list
@@ -321,7 +321,7 @@ module LLT
             F = level_form_factor(cp.level[cf], cp.level[ci], ql; Chern = C)
         end
 
-        scats = Scattering{1}[]
+        scats = Scatter{1}[]
         for ki in axes(k_list, 2)
             kf = momentum_index_search(k_list[1, ki] + q1, k_list[2, ki] + q2; para = para)
             iszero(kf) && continue
@@ -339,10 +339,10 @@ module LLT
             G = round.(Int64, kf_coord .- ki_coord .- q_coord, RoundNearest)
             sign = ita(G[1], G[2])
 
-            push!(scats, MomentumED.NormalScattering(sign*F*phase, index_f, index_i; hermitian_upper_triangular = false))
+            push!(scats, MomentumED.NormalScatter(sign*F*phase, index_f, index_i; hermitian_upper_triangular = false))
         end
 
-        return MBSOperator{Float64}(scats; upper_triangular = false)
+        return MBOperator{Float64}(scats; upper_triangular = false)
     end
 
 

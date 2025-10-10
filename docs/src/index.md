@@ -18,17 +18,17 @@ Using KrylovKit for sparse-matrix or linear-map eigenvalue problems.
 
 ## Features
 
-### Low-level Structs: Implementations for general Hilbert space basis and N-body scattering terms
+### Low-level Structs: Implementations for general Hilbert space basis and N-body Scatter terms
 - **Bit-based State Representation**: `MBS64{bits}` type for `bits`-dimensional one-body Hilbert space basis using bit encoding (at most 64-dimensional)
-- **Scattering Formalism**: Hamiltonian (or any operator) construction using N-body `Scattering` terms
-- **State and Operator**: Easy manipulations for many-body states in `MBS64Vector` and operators in `MBSOperator`
+- **Scatter Formalism**: Hamiltonian (or any operator) construction using N-body `Scatter` terms
+- **State and Operator**: Easy manipulations for many-body states in `MBS64Vector` and operators in `MBOperator`
 ### High-level Functionalities: Standard solving process for a momentum-conserving Hermitian Hamiltonian
 - **Momentum Block Division**: Separates Hilbert space by total momentum quantum numbers
 - **Multi-component Systems**: Support for conserved and non-conserved component indices orthogonal to momentum index
 - **KrylovKit.jl Integration**: Sparse matrix diagonalization using KrylovKit's eigsolve function
 ### Many-Body State Analysis: 
 - **One-body Reduced Density**: Computing one-body reduced density matrix of an eigenvector
-- **Expectation Value**: Construct any `MBSOperator` and its expectation value in an `MBS64Vector`
+- **Expectation Value**: Construct any `MBOperator` and its expectation value in an `MBS64Vector`
 - **Entanglement Calculation**: Computing entanglement entropy of an eigenvector (in development)
 - **Berry Connection**: Many-body Berry connection calculation for topological analysis
 
@@ -88,9 +88,9 @@ mbs_list = ED_mbslist(para, (4,))
 # Divide into subspaces (momentum blocks)
 blocks, block_k1, block_k2, k0number = ED_momentum_block_division(para, mbs_list)
 
-# Generate scattering lists
-scat_list1 = ED_sortedScatteringList_onebody(para)
-scat_list2 = ED_sortedScatteringList_twobody(para)
+# Generate Scatter lists
+scat_list1 = ED_sortedScatterList_onebody(para)
+scat_list2 = ED_sortedScatterList_twobody(para)
 
 # Solve first momentum block with 5 lowest eigenenergies
 energies, eigenvectors = EDsolve(blocks[1], scat_list1, scat_list2, 5)
@@ -103,7 +103,7 @@ println("Total momentum: (", block_k1[1], ", ",  block_k2[1],")  Ground state en
 
 - **EDPara**: Parameter container storing k-mesh, interaction functions, and component mappings
 - **MBS64{bits}**: Many-body state representation with bit-based occupation encoding (up to 64 orbitals)
-- **Scattering{N}**: Hamiltonian term representation for efficient sparse matrix construction
+- **Scatter{N}**: Hamiltonian term representation for efficient sparse matrix construction
 - **KrylovKit Integration**: Uses eigsolve for sparse eigenvalue problems with configurable convergence
 
 ## Dependencies

@@ -44,36 +44,36 @@ state_value = mbs.n
 
 ## Hamiltonian Construction
 
-### Scattering Formalism
+### Scatter Formalism
 
-The Hamiltonian is constructed using abstract N-body scattering terms:
+The Hamiltonian is constructed using abstract N-body Scatter terms:
 
 
 ```julia
-struct Scattering{N}
+struct Scatter{N}
     Amp::ComplexF64
     out::NTuple{N, Int64}
     in::NTuple{N, Int64}
 end
 
 # One-body: V * c†_i c_j
-s1 = Scattering(1.0-1.0im, 1, 2)  # Creates c†_1 c_2 term
+s1 = Scatter(1.0-1.0im, 1, 2)  # Creates c†_1 c_2 term
 
 # Two-body: V * c†_i1 c†_i2 c_j2 c_j1  
-s2 = Scattering(0.5, 1, 2, 4, 3)  # Creates c†_1 c†_2 c_4 c_3 term
+s2 = Scatter(0.5, 1, 2, 4, 3)  # Creates c†_1 c†_2 c_4 c_3 term
 ```
 
 
-### Scattering List Generation
+### Scatter List Generation
 
-The package generates sorted lists of scattering terms:
+The package generates sorted lists of Scatter terms:
 
 ```julia
 # One-body terms from EDPara.H_onebody matrix
-scat_list1 = ED_sortedScatteringList_onebody(para)
+scat_list1 = ED_sortedScatterList_onebody(para)
 
 # Two-body terms from interaction function
-scat_list2 = ED_sortedScatteringList_twobody(para)
+scat_list2 = ED_sortedScatterList_twobody(para)
 ```
 
 
@@ -108,7 +108,7 @@ function V_int(k_coords_f1, k_coords_f2, k_coords_i1, k_coords_i2, cf1=1, cf2=1,
     # k_coords_*: Tuple{Float64, Float64} momentum coordinates
     # cf1, cf2: final component indices
     # ci1, ci2: initial component indices
-    # Return complex scattering amplitude
+    # Return complex Scatter amplitude
 end
 ```
 
@@ -162,7 +162,7 @@ berry_conn = ED_connection_integral(kshift1, kshift2, ψ1, ψ2, momentum_axis_an
 The package uses KrylovKit for sparse matrix diagonalization:
 
 ```julia
-# Sparse matrix construction from scattering terms
+# Sparse matrix construction from Scatter terms
 H = ED_HamiltonianMatrix_threaded(block, scat_list1, scat_list2, multi_thread)
 
 # KrylovKit eigensolve

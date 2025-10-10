@@ -96,8 +96,8 @@ blocks, block_k1, block_k2, k0number =
     ED_momentum_block_division(para, ED_mbslist(para, (Ne,)));
 length.(blocks)
 
-scat_list1 = ED_sortedScatteringList_onebody(para)
-scat_list2 = ED_sortedScatteringList_twobody(para)
+scat_list1 = ED_sortedScatterList_onebody(para)
+scat_list2 = ED_sortedScatterList_twobody(para)
 
 
 energies = Vector{Vector{Float64}}(undef, length(blocks));

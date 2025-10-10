@@ -1,7 +1,7 @@
 name = "MomentumED"
 uuid = "2c2e6bdd-50a7-494a-93d8-6f138df00727"
 authors = ["Alice loves Bob <zou.bo.phys@gmail.com>"]
-version = "1.2.0"
+version = "1.2.1"
 
 [deps]
 Combinatorics = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"

@@ -6,15 +6,15 @@ This module only sets sectors of total (crystal) momentum, also called blocks.
 module MomentumED
 
 # type
-export MBS64, MBS64Vector, Scattering, MBSOperator
+export MBS64, MBS64Vector, Scatter, MBOperator
 public get_bits, create_state_mapping
 export ED_bracket, ED_bracket_threaded, multiplication_threaded
 
 # preparation
 public ED_mbslist_onecomponent
 export EDPara, ED_mbslist, ED_momentum_block_division
-export ED_sortedScatteringList_onebody
-export ED_sortedScatteringList_twobody
+export ED_sortedScatterList_onebody
+export ED_sortedScatterList_twobody
 
 # methods
 public ED_HamiltonianMatrix_threaded
@@ -34,7 +34,9 @@ using KrylovKit
 
 # Include utilities
 include("type/manybodystate.jl")
+include("type/manybodystate_vector.jl")
 include("type/scattering.jl")
+include("type/scattering_operator.jl")
 include("type/operator_on_state.jl")
 include("preparation/init_parameter.jl")
 include("preparation/momentum_decomposition.jl")
@@ -96,18 +98,18 @@ end
 """
     EDsolve(
         sorted_mbs_block_list::Vector{<: MBS64}, 
-        sorted_scat_lists::Vector{<: Scattering}...;
+        sorted_scat_lists::Vector{<: Scatter}...;
         N::Int64 = 6, showtime = false, method = :sparse,
         element_type::Type = Float64, index_type::Type = Int64, 
         min_sparse_dim::Int64 = 100, max_dense_dim::Int64 = 200,
         krylovkit_kwargs...) -> (vals, vecs)
 
 Main interface function for exact diagonalization of momentum-conserved quantum systems.
-Constructs the sparse Hamiltonian matrix from scattering lists and diagonalizes it.
+Constructs the sparse Hamiltonian matrix from Scatter lists and diagonalizes it.
 
 # Arguments
 - `sorted_mbs_block_list::Vector{<: MBS64}`: Sorted list of many-body states in the momentum block
-- `sorted_scat_list::Vector{<: Scattering}`: Sorted scattering terms (one-body, two-body, etc.)
+- `sorted_scat_list::Vector{<: Scatter}`: Sorted Scatter terms (one-body, two-body, etc.)
 - `N_eigen::Int64=6`: Number of eigenvalues/eigenvectors to compute (default: 6)
 
 # Keywords
@@ -121,19 +123,19 @@ Constructs the sparse Hamiltonian matrix from scattering lists and diagonalizes 
 
 # Examples
 ```julia
-# Create basis and scattering lists for a 2-site system
+# Create basis and Scatter lists for a 2-site system
 basis = ED_mbslist(para, (2,))
 blocks, _, _, _ = ED_momentum_block_division(para, basis)
-scattering1 = ED_sortedScatteringList_onebody(para)
-scattering2 = ED_sortedScatteringList_twobody(para)
+Scatter1 = ED_sortedScatterList_onebody(para)
+Scatter2 = ED_sortedScatterList_twobody(para)
 
 # Solve for ground state and first excited state
-energies, wavefunctions = EDsolve(blocks[1], scattering1, scattering2; N=1)
+energies, wavefunctions = EDsolve(blocks[1], Scatter1, Scatter2; N=1)
 println("Ground state energy: ", energies[1])
 ```
 """
 function EDsolve(
-    sorted_mbs_block_list::Vector{<: MBS64}, sorted_scat_lists::Vector{<: Scattering}...;
+    sorted_mbs_block_list::Vector{<: MBS64}, sorted_scat_lists::Vector{<: Scatter}...;
     N::Int64 = 6, showtime = false, method = :sparse,
     element_type::Type = Float64, index_type::Type = Int64, 
     min_sparse_dim::Int64 = 100, max_dense_dim::Int64 = 200,
@@ -157,7 +159,7 @@ function EDsolve(
             method = :sparse
         end
 
-        # Construct sparse Hamiltonian matrix from scattering terms
+        # Construct sparse Hamiltonian matrix from Scatter terms
         if showtime
             @time H = ED_HamiltonianMatrix_threaded(sorted_mbs_block_list, sorted_scat_lists...;
                 element_type = element_type, index_type = index_type
@@ -205,7 +207,7 @@ function EDsolve(
 end
 
 function EDsolve(
-    HilbertSubspace::Dict{MBS64{bits}, idtype}, HamiltonianOperator::MBSOperator{eltype};
+    HilbertSubspace::Dict{MBS64{bits}, idtype}, HamiltonianOperator::MBOperator{eltype};
     N::Int64 = 6, showtime = false, method = :sparse, 
     min_sparse_dim::Int64 = 100, max_dense_dim::Int64 = 200,
     krylovkit_kwargs...) where{bits, eltype, idtype}

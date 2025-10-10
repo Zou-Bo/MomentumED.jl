@@ -25,12 +25,12 @@ function pseudopotential(m::Int64)
     sys_int.mix = 1.0
 
     local para = EDPara(k_list = k_list, Gk = Gk, V_int = sys_int)
-    local scat = ED_sortedScatteringList_twobody(para);
-    return MBSOperator{Float64}(scat; upper_triangular = true)
+    local scat = ED_sortedScatterList_twobody(para);
+    return MBOperator{Float64}(scat; upper_triangular = true)
 end
 
 m_list = 0:20
-ops = Vector{MBSOperator}(undef, length(m_list));
+ops = Vector{MBOperator}(undef, length(m_list));
 for i in eachindex(m_list)
     ops[i] = pseudopotential(m_list[i])
 end
@@ -50,7 +50,7 @@ para = EDPara(k_list = k_list, Gk = Gk,
 blocks, block_k1, block_k2, k0number = 
     ED_momentum_block_division(para, ED_mbslist(para, (Ne,)));
 # one-body terms are all zero in flat Landau level
-scat = ED_sortedScatteringList_twobody(para);
+scat = ED_sortedScatterList_twobody(para);
 
 Neigen = 10  # Number of eigenvalues to compute per block
 energies = Vector{Vector{Float64}}(undef, length(blocks));
@@ -66,7 +66,7 @@ bn = 11
 using MomentumED: create_state_mapping, ED_apply
 mapping = MomentumED.create_state_mapping(blocks[bn])
 myvec = MBS64Vector(vectors[bn][1], mapping);
-opop = MBSOperator{Float64}(ops[1].scats[15:15]; upper_triangular = true);
+opop = MBOperator{Float64}(ops[1].scats[15:15]; upper_triangular = true);
 opop.scats
 
 

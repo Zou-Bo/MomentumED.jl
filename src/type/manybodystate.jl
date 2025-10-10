@@ -214,10 +214,10 @@ end
     scat_occ_number(mbs::MBS64{bits}, i_list::Tuple{Int64, Int64}})::Int64 where {bits}
 
 Count the total number of occupied orbitals that contribute to the sign flip when applying a series of creation/annihilation operators.
-When a Scattering{N} object is applied, the number of sign flips should be the sum of 
+When a Scatter{N} object is applied, the number of sign flips should be the sum of 
 applying the creation i_list and annihilation i_list on the middle state.
 
-Optimized for one-body and two-body scattering with Tuple input.
+Optimized for one-body and two-body Scatter with Tuple input.
 """
 function scat_occ_number(mbs::MBS64{bits}, i_list::Vector{Int64}) where {bits}
 
@@ -267,76 +267,3 @@ function scat_occ_number(mbs::MBS64{bits}, i_list::Tuple{Int64, Int64}) where {b
 
 end
 
-
-
-
-
-
-
-
-"""
-    create_state_mapping(sorted_mbs_block_list)
-
-Create a dictionary mapping from MBS64 states to their indices for O(1) lookup.
-This eliminates the my_searchsortedfirst bottleneck by providing direct state-to-index mapping.
-
-# Arguments
-- `sorted_mbs_block_list::Vector{MBS64{bits}}`: Sorted list of MBS64 basis states
-
-# Returns
-- `Dict{MBS64{bits}, Int}`: Mapping from state integer representation to matrix index
-"""
-function create_state_mapping(mbs_list::Vector{MBS64{bits}}, index_type::Type = Int64) where {bits}
-
-    @assert index_type <: Integer "index_type should be a Integer."
-    @assert length(mbs_list) <= typemax(index_type) "index type $index_type cannot cover the length of given MBS64 list."
-    @assert issorted(mbs_list) "Using unsorted mbs list will cause failure in ensuring the scatttering terms in upper triangular."
-
-    mapping = Dict{MBS64{bits}, index_type}()
-    for (i, state) in enumerate(mbs_list)
-        mapping[state] = i
-    end
-    return mapping
-end
-
-"""
-    struct MBS64Vector{bits, F<: Real, I<: Integer}
-        vec::Vector{Complex{F}}
-        space::Dict{MBS64{bits}, I}
-    end
-
-A vector of components bounded to a hash table that specifies the Hilbert subspace.
-It represents a general many-body states in the basis of given MBS64{bits} list.
-
-To save the memory usage, all MBS64Vectors in the same subspace use the same hash table.
-"""
-struct MBS64Vector{bits, F <: Real, I <: Integer}
-    vec::Vector{Complex{F}}
-    space::Dict{MBS64{bits}, I}
-
-    function MBS64Vector(vec::Vector{Complex{F}}, space::Dict{MBS64{bits}, I}) where {bits, F<:Real, I<:Integer}
-        @boundscheck @assert length(vec) == length(space) "vector length mismatches Hilbert space dimension."
-        new{bits, F, I}(vec, space)
-    end
-end
-
-import Base: length, similar, copy, size
-import LinearAlgebra: dot
-function Base.show(io::IO, ::MIME"text/plain", mbs_vec::MBS64Vector{bits, F, I}) where {bits, F <: Real, I <: Integer}
-    print(io, "MBS64Vector{$bits, $F, $I}, ")
-    show(io, MIME"text/plain"() ,mbs_vec.vec)
-end
-length(mbs_vec::MBS64Vector) = length(mbs_vec.vec)
-size(mbs_vec::MBS64Vector) = (length(mbs_vec.vec), )
-function similar(mbs_vec::MBS64Vector{bits, F, I})::MBS64Vector{bits, F, I} where {bits, F, I}
-    @inbounds return MBS64Vector(similar(mbs_vec.vec), mbs_vec.space)
-end
-function copy!(mbs_to::MBS64Vector{bits, F, I}, mbs_from::MBS64Vector{bits, F, I}) where {bits, F, I}
-    @assert mbs_to.space == mbs_from.space "mbs vectors are not in the same subspace."
-    mbs_to.vec .= mbs_from.vec
-    return nothing
-end
-function dot(mbs_bra::MBS64Vector{bits, F, I}, mbs_ket::MBS64Vector{bits, F, I})::Complex{F} where {bits, F, I}
-    @boundscheck @assert mbs_bra.space == mbs_ket.space "mbs vectors are not in the same subspace."
-    return dot(mbs_bra.vec, mbs_ket.vec)
-end

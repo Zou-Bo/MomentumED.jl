@@ -1,16 +1,16 @@
 """
-    ED_sortedScatteringList_onebody(para::EDPara) -> Vector{Scattering{1}}
+    ED_sortedScatterList_onebody(para::EDPara) -> Vector{Scatter{1}}
 
-Generate sorted lists of one-body scattering terms from the parameters.
+Generate sorted lists of one-body Scatter terms from the parameters.
 
 Extracts one-body terms from EDpara.H_onebody for multi-component systems and converts
-them to scattering terms with proper normal ordering.
+them to Scatter terms with proper normal ordering.
 
 # Arguments
 - `para::EDPara`: Parameter structure containing system configuration
 
 # Returns
-- `Vector{Scattering{1}}`: Sorted list of one-body scattering terms
+- `Vector{Scatter{1}}`: Sorted list of one-body Scatter terms
 
 # Details
 - Maps component indices to global orbital indices using: `global_index = k + Nk * (ch - 1) + Nk * Nch * (cc - 1)`
@@ -21,11 +21,11 @@ them to scattering terms with proper normal ordering.
 # Example
 ```julia
 para = EDPara(k_list=k_list, Gk=(3, 5), V_int=V_int)
-scattering1 = ED_sortedScatteringList_onebody(para)
+Scatter1 = ED_sortedScatterList_onebody(para)
 ```
 """
-function ED_sortedScatteringList_onebody(para::EDPara)
-    sct_list1 = Vector{Scattering{1}}()
+function ED_sortedScatterList_onebody(para::EDPara)
+    sct_list1 = Vector{Scatter{1}}()
     Nk = para.Nk
     Nch = para.Nc_hopping
     Ncc = para.Nc_conserve
@@ -38,8 +38,8 @@ function ED_sortedScatteringList_onebody(para::EDPara)
             i_ot = k + Nk * (ch1 - 1) + Nk * Nch * (cc - 1)  # output orbital
             i_in = k + Nk * (ch2 - 1) + Nk * Nch * (cc - 1)  # input orbital
 
-            # Create scattering term with normal ordering
-            i_in >= i_ot && push!(sct_list1, NormalScattering(V, i_ot, i_in))
+            # Create Scatter term with normal ordering
+            i_in >= i_ot && push!(sct_list1, NormalScatter(V, i_ot, i_in))
         end
     end
     
@@ -67,7 +67,7 @@ momentum index pairs that conserve that total momentum.
 # Details
 - Generates all possible pairs `(i,j)` with `i >= j` to avoid duplicates
 - Uses `MBS_totalmomentum(para, i, j)` to compute total momentum for each pair
-- Essential for efficient two-body scattering term generation
+- Essential for efficient two-body Scatter term generation
 - Enables momentum conservation enforcement in Hamiltonian construction
 
 # Example
@@ -102,13 +102,13 @@ end
 
 """
     scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para::EDPara;
-                   kshift::Tuple{Float64, Float64} = (0.0, 0.0), output::Bool = false) -> Vector{Scattering{2}}
+                   kshift::Tuple{Float64, Float64} = (0.0, 0.0), output::Bool = false) -> Vector{Scatter{2}}
 
-Generate all scattering terms between momentum pairs with the same total momentum. 
+Generate all Scatter terms between momentum pairs with the same total momentum. 
 Use the interaction function that accepts coordinate format momenta.
 Allow input of momentum shift for twisted boundary conditions.
 
-Creates two-body scattering terms for all possible transitions between momentum pairs
+Creates two-body Scatter terms for all possible transitions between momentum pairs
 that conserve total momentum, including all component index combinations.
 
 # Arguments
@@ -117,22 +117,22 @@ that conserve total momentum, including all component index combinations.
 
 # Keywords
 - `kshift::Tuple{Float64, Float64}=(0.0, 0.0)`: Momentum shift for twisted boundary conditions
-- `output::Bool=false`: Print all the scattering terms (before normal ordering) for debugging purposes
+- `output::Bool=false`: Print all the Scatter terms (before normal ordering) for debugging purposes
 
 # Returns
-- `Vector{Scattering{2}}`: List of two-body scattering terms for this momentum group
+- `Vector{Scatter{2}}`: List of two-body Scatter terms for this momentum group
 
 # Details
 - Iterates over all input/output momentum pair combinations within the group
 - Generates all component index combinations for each momentum pair
 - Maps momentum and component indices to global orbital indices
 - Applies normal ordering: `minmax(i1, i2) >= minmax(f1, f2)`
-- Calculates scattering amplitudes using `int_amp` function with momentum shift
+- Calculates Scatter amplitudes using `int_amp` function with momentum shift
 - Includes both direct and exchange contributions
 - Handles identical orbital pairs with proper exclusion
 
 # Physics
-The scattering amplitude includes:
+The Scatter amplitude includes:
 - Direct term: `int_amp(i1, i2, f1, f2, para; kshift=kshift)`
 - Exchange term: `int_amp(i2, i1, f1, f2, para; kshift=kshift)`
 - Total amplitude: `amp = amp_direct - amp_exchange`
@@ -142,12 +142,12 @@ The scattering amplitude includes:
 # Get momentum pairs with total momentum (0, 0)
 groups = group_momentum_pairs(para)
 zero_momentum_pairs = groups[(0, 0)]
-# Generate all scattering terms for this momentum group
-scattering_terms = scat_pair_group(zero_momentum_pairs, para)
+# Generate all Scatter terms for this momentum group
+Scatter_terms = scat_pair_group(zero_momentum_pairs, para)
 ```
 """
 function scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para::EDPara;
-    kshift::Tuple{Float64, Float64} = (0.0, 0.0), output::Bool = false)::Vector{Scattering{2}}
+    kshift::Tuple{Float64, Float64} = (0.0, 0.0), output::Bool = false)::Vector{Scatter{2}}
     
     Nc = para.Nc
     Nk = para.Nk
@@ -161,7 +161,7 @@ function scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para
         frac_klist[2, :] ./= Gk2
     end
 
-    scattering_list = Vector{Scattering{2}}()
+    Scatter_list = Vector{Scatter{2}}()
     # Iterate over all input and output pairs
     for (ki1, ki2) in pair_group, (kf1, kf2) in pair_group
         output && println()
@@ -189,7 +189,7 @@ function scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para
                 continue
             end
 
-            # inverse scattering only need to count onece, as the Hamiltonian is generated with upper half Hermitian()
+            # inverse Scatter only need to count onece, as the Hamiltonian is generated with upper half Hermitian()
             if minmax(i1, i2) >= minmax(f1, f2)
 
                 # Calculate the direct and exchange amplitudes
@@ -213,25 +213,25 @@ function scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para
                 )
 
                 amp = (amp_direct - amp_exchange) / sys_size
-                iszero(amp) || push!(scattering_list, NormalScattering(amp, f1, f2, i2, i1))
+                iszero(amp) || push!(Scatter_list, NormalScatter(amp, f1, f2, i2, i1))
                 output && println()
             end
         
         end
     end
     
-    return scattering_list
+    return Scatter_list
 end
 
 """
     scat_pair_group_index(pair_group::Vector{Tuple{Int64,Int64}}, para::EDPara;
-                   output::Bool = false) -> Vector{Scattering{2}}
+                   output::Bool = false) -> Vector{Scatter{2}}
 
-Generate all scattering terms between momentum pairs with the same total momentum. 
+Generate all Scatter terms between momentum pairs with the same total momentum. 
 Use the interaction function that accepts indices of momenta in `para.k_list`.
 No input of momentum shift for twisted boundary conditions; update the `para` instead.
 
-Creates two-body scattering terms for all possible transitions between momentum pairs
+Creates two-body Scatter terms for all possible transitions between momentum pairs
 that conserve total momentum, including all component index combinations.
 
 # Arguments
@@ -239,22 +239,22 @@ that conserve total momentum, including all component index combinations.
 - `para::EDPara`: Parameter structure containing system configuration
 
 # Keywords
-- `output::Bool=false`: Print all the scattering terms (before normal ordering) for debugging purposes
+- `output::Bool=false`: Print all the Scatter terms (before normal ordering) for debugging purposes
 
 # Returns
-- `Vector{Scattering{2}}`: List of two-body scattering terms for this momentum group
+- `Vector{Scatter{2}}`: List of two-body Scatter terms for this momentum group
 
 # Details
 - Iterates over all input/output momentum pair combinations within the group
 - Generates all component index combinations for each momentum pair
 - Maps momentum and component indices to global orbital indices
 - Applies normal ordering: `minmax(i1, i2) >= minmax(f1, f2)`
-- Calculates scattering amplitudes using `int_amp` function with momentum shift
+- Calculates Scatter amplitudes using `int_amp` function with momentum shift
 - Includes both direct and exchange contributions
 - Handles identical orbital pairs with proper exclusion
 
 # Physics
-The scattering amplitude includes:
+The Scatter amplitude includes:
 - Direct term: `int_amp(i1, i2, f1, f2, para; kshift=kshift)`
 - Exchange term: `int_amp(i2, i1, f1, f2, para; kshift=kshift)`
 - Total amplitude: `amp = amp_direct - amp_exchange`
@@ -264,12 +264,12 @@ The scattering amplitude includes:
 # Get momentum pairs with total momentum (0, 0)
 groups = group_momentum_pairs(para)
 zero_momentum_pairs = groups[(0, 0)]
-# Generate all scattering terms for this momentum group
-scattering_terms = scat_pair_group(zero_momentum_pairs, para)
+# Generate all Scatter terms for this momentum group
+Scatter_terms = scat_pair_group(zero_momentum_pairs, para)
 ```
 """
 function scat_pair_group_index(pair_group::Vector{Tuple{Int64,Int64}}, para::EDPara;
-    output::Bool = false)::Vector{Scattering{2}}
+    output::Bool = false)::Vector{Scatter{2}}
     
     Nc = para.Nc
     Nk = para.Nk
@@ -277,7 +277,7 @@ function scat_pair_group_index(pair_group::Vector{Tuple{Int64,Int64}}, para::EDP
     sys_size = (Gk1 != 0 && Gk2 != 0) ? Nk : 1
 
 
-    scattering_list = Vector{Scattering{2}}()
+    Scatter_list = Vector{Scatter{2}}()
     # Iterate over all input and output pairs
     for (ki1, ki2) in pair_group, (kf1, kf2) in pair_group
         output && println()
@@ -305,7 +305,7 @@ function scat_pair_group_index(pair_group::Vector{Tuple{Int64,Int64}}, para::EDP
                 continue
             end
 
-            # inverse scattering only need to count onece, as the Hamiltonian is generated with upper half Hermitian()
+            # inverse Scatter only need to count onece, as the Hamiltonian is generated with upper half Hermitian()
             if minmax(i1, i2) >= minmax(f1, f2)
 
                 # Calculate the direct and exchange amplitudes
@@ -323,22 +323,22 @@ function scat_pair_group_index(pair_group::Vector{Tuple{Int64,Int64}}, para::EDP
                 )
 
                 amp = (amp_direct - amp_exchange) / sys_size
-                iszero(amp) || push!(scattering_list, NormalScattering(amp, f1, f2, i2, i1))
+                iszero(amp) || push!(Scatter_list, NormalScatter(amp, f1, f2, i2, i1))
                 output && println()
             end
         
         end
     end
     
-    return scattering_list
+    return Scatter_list
 end
 
 """
-    ED_sortedScatteringList_twobody(para::EDPara; kshift::Tuple{Float64, Float64} = (0.0, 0.0)) -> Vector{Scattering{2}}
+    ED_sortedScatterList_twobody(para::EDPara; kshift::Tuple{Float64, Float64} = (0.0, 0.0)) -> Vector{Scatter{2}}
 
-Generate sorted lists of two-body scattering terms from the parameters.
+Generate sorted lists of two-body Scatter terms from the parameters.
 
-Uses the interaction function from EDPara.V_int to calculate scattering amplitudes
+Uses the interaction function from EDPara.V_int to calculate Scatter amplitudes
 for all possible two-body processes, grouped by total momentum conservation.
 It recognizes which momentum input format is accepted by `para.V_int` function.
 If the momentum index is used, no input of momentum shift for twisted boundary conditions is allowed.
@@ -350,7 +350,7 @@ If the momentum index is used, no input of momentum shift for twisted boundary c
 - `kshift::Tuple{Float64, Float64}=(0.0, 0.0)`: Momentum shift for twisted boundary conditions
 
 # Returns
-- `Vector{Scattering{2}}`: Sorted list of two-body scattering terms
+- `Vector{Scatter{2}}`: Sorted list of two-body Scatter terms
 
 # Details
 - Groups momentum pairs by total momentum for efficiency
@@ -364,16 +364,16 @@ If the momentum index is used, no input of momentum shift for twisted boundary c
 ```julia
 para = EDPara(k_list=k_list, Gk=(3, 5), V_int=V_int)
 # Without momentum shift
-scattering2 = ED_sortedScatteringList_twobody(para)
+Scatter2 = ED_sortedScatterList_twobody(para)
 # With twisted boundary conditions
-scattering2_shifted = ED_sortedScatteringList_twobody(para; kshift=(0.1, 0.1))
+Scatter2_shifted = ED_sortedScatterList_twobody(para; kshift=(0.1, 0.1))
 ```
 """
-function ED_sortedScatteringList_twobody(para::EDPara; kshift::Tuple{Float64, Float64} = (0.0, 0.0))
+function ED_sortedScatterList_twobody(para::EDPara; kshift::Tuple{Float64, Float64} = (0.0, 0.0))
 
     momentum_groups = group_momentum_pairs(para)
     
-    sct_list2 = Vector{Scattering{2}}()
+    sct_list2 = Vector{Scatter{2}}()
     if para.momentum_coordinate
         for (K_total, pairs) in momentum_groups
             append!(sct_list2, scat_pair_group_coordinate(pairs, para; kshift=kshift))

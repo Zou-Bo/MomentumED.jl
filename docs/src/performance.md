@@ -34,14 +34,14 @@ The package reduces computational complexity through momentum conservation:
 blocks, block_k1, block_k2, k0number = ED_momentum_block_division(para, mbs_list)
 ```
 
-### Scattering Formalism
+### Scatter Formalism
 
-Hamiltonian construction uses scattering terms:
+Hamiltonian construction uses Scatter terms:
 
 ```julia
-# Generate sorted scattering lists
-scat_list1 = ED_sortedScatteringList_onebody(para)
-scat_list2 = ED_sortedScatteringList_twobody(para)
+# Generate sorted Scatter lists
+scat_list1 = ED_sortedScatterList_onebody(para)
+scat_list2 = ED_sortedScatterList_twobody(para)
 ```
 
 **Advantages**:
@@ -109,9 +109,9 @@ Key data structure choices:
 
 ## Algorithmic Optimizations
 
-### Sorted Scattering Lists
+### Sorted Scatter Lists
 
-Scattering terms are sorted and merged.
+Scatter terms are sorted and merged.
 
 
 **Benefits**:

@@ -7,7 +7,7 @@ Central parameter container for system configuration.
 
 **Constructor:**
 - `k_list::Matrix{Int64}`: Momentum point represented by integers
-- `Gk::Tuple{Int64, Int64}`: Reciprocal lattice constant in integers; zero means no Umklapp scattering (default (0,0))
+- `Gk::Tuple{Int64, Int64}`: Reciprocal lattice constant in integers; zero means no Umklapp Scatter (default (0,0))
 - `Nc_conserve::Int64`: Number of conserved components (default 1)
 - `Nc_hopping::Int64`: Number of hopping channels (default 1)
 - `V_int::Function`: Two-body interaction function
@@ -47,23 +47,23 @@ Divide Hilbert space into momentum blocks.
 
 ### Hamiltonian Construction
 
-#### ED_sortedScatteringList_onebody(para::EDPara)
-Generate sorted list of one-body scattering terms.
+#### ED_sortedScatterList_onebody(para::EDPara)
+Generate sorted list of one-body Scatter terms.
 
 **Arguments:**
 - `para::EDPara`: System parameters
 
 **Returns:**
-- `Vector{Scattering{1}}`: Sorted one-body scattering terms
+- `Vector{Scatter{1}}`: Sorted one-body Scatter terms
 
-#### ED_sortedScatteringList_twobody(para::EDPara)
-Generate sorted list of two-body scattering terms.
+#### ED_sortedScatterList_twobody(para::EDPara)
+Generate sorted list of two-body Scatter terms.
 
 **Arguments:**
 - `para::EDPara`: System parameters
 
 **Returns:**
-- `Vector{Scattering{2}}`: Sorted two-body scattering terms
+- `Vector{Scatter{2}}`: Sorted two-body Scatter terms
 
 ### Diagonalization
 
@@ -72,8 +72,8 @@ Solve eigenvalue problem for momentum block.
 
 **Arguments:**
 - `block::Vector{MBS64}`: Many-body states in block
-- `scat_list1::Vector{Scattering{1}}`: One-body scattering terms
-- `scat_list2::Vector{Scattering{2}}`: Two-body scattering terms
+- `scat_list1::Vector{Scatter{1}}`: One-body Scatter terms
+- `scat_list2::Vector{Scatter{2}}`: Two-body Scatter terms
 - `Neigen::Int64`: Number of eigenvalues to compute
 
 **Keyword Arguments:**
@@ -125,7 +125,7 @@ Convert occupancy array to momentum representation.
 - `Vector{ComplexF64}`: Momentum space wavefunction
 
 #### group_momentum_pairs(k_list, Gk)
-Group momentum pairs for efficient scattering calculations.
+Group momentum pairs for efficient Scatter calculations.
 
 **Arguments:**
 - `k_list::Matrix{Int64}`: Momentum point indices
@@ -152,7 +152,7 @@ Handled by the interaction function `para.V_int` with proper component mapping.
 
 ## Performance Tips
 
-1. **Pre-computation**: Generate scattering lists once and reuse for all momentum blocks
+1. **Pre-computation**: Generate Scatter lists once and reuse for all momentum blocks
 2. **Memory Management**: Use `showtime=true` to monitor memory usage
 3. **Parallel Processing**: The package automatically uses multiple threads when available
 4. **Sparse Methods**: KrylovKit eigensolvers are memory-efficient for large systems

@@ -26,9 +26,9 @@ para = EDPara(k_list=k_list, Gk=Gk, V_int=V_int)
 mbs_list = ED_mbslist(para, Ne)
 blocks, block_k1, block_k2, k0number = ED_momentum_block_division(para, mbs_list)
 
-# Scattering list generation
-scat_list1 = ED_sortedScatteringList_onebody(para)
-scat_list2 = ED_sortedScatteringList_twobody(para)
+# Scatter list generation
+scat_list1 = ED_sortedScatterList_onebody(para)
+scat_list2 = ED_sortedScatterList_twobody(para)
 
 # KrylovKit diagonalization
 energies, eigenvectors = EDsolve(blocks[1], scat_list1, scat_list2, 5)
@@ -126,7 +126,7 @@ Pkg.add(url="https://github.com/Zou-Bo/MomentumED.jl")
 Both examples showcase:
 
 - **Momentum Block Division**: Automatic separation by total momentum quantum numbers
-- **Scattering Formalism**: Efficient Hamiltonian construction using scattering terms
+- **Scatter Formalism**: Efficient Hamiltonian construction using Scatter terms
 - **KrylovKit Integration**: Sparse matrix diagonalization with convergence control
 - **Multi-component Support**: Handling of additional quantum numbers beyond momentum
 - **Entanglement Analysis**: Built-in functions for computing entanglement entropy with bit masks

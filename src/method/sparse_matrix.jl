@@ -1,12 +1,12 @@
 """
-    sparse_matrix.jl - Sparse Hamiltonian matrix construction from scattering lists
+    sparse_matrix.jl - Sparse Hamiltonian matrix construction from Scatter lists
     
-    This file provides functions for converting scattering lists into sparse matrix
+    This file provides functions for converting Scatter lists into sparse matrix
     Hamiltonians for momentum-conserved exact diagonalization. Handles both one-body
-    and two-body scattering terms with proper Hermitian matrix construction.
+    and two-body Scatter terms with proper Hermitian matrix construction.
 """
 
-include("search.jl")
+
 
 
 """
@@ -16,7 +16,7 @@ Threaded version of generating Hamiltonian Matrix with pre-computed state mappin
 
 # Arguments
 - `sorted_mbs_block_list::Vector{<: MBS64}`: Sorted basis states for momentum block
-- `sorted_scat_lists::Vector{<: Scattering}`: lists of scattering terms (one-body, two-body, etc.)
+- `sorted_scat_lists::Vector{<: Scatter}`: lists of Scatter terms (one-body, two-body, etc.)
 
 # Keywords
 - `element_type::Type=Float64`: Element type of the sparse matrix (Float64, Float32, Float16)
@@ -31,7 +31,7 @@ Provides 4-8x speedup for medium to large systems compared to the basic version.
 """
 function ED_HamiltonianMatrix_threaded(
     sorted_mbs_block_list::Vector{<: MBS64}, 
-    sorted_scat_lists::Vector{<: Scattering}...;
+    sorted_scat_lists::Vector{<: Scatter}...;
     element_type::Type = Float64, index_type::Type = Int64,
 )::SparseMatrixCSC
 
@@ -50,7 +50,7 @@ function ED_HamiltonianMatrix_threaded(
     
     # Parallel construction over columns
     Threads.@threads for j in 1:n_states
-        tid = Threads.threadid()
+        tid = Threads.threadid() - Threads.nthreads(:interactive)
         mbs_in = sorted_mbs_block_list[j]
         
         for scat_list in sorted_scat_lists

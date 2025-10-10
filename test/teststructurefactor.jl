@@ -65,7 +65,7 @@ blocks, block_k1, block_k2, k0number =
     ED_momentum_block_division(para, ED_mbslist(para, (Ne,)));
 @show length.(blocks)
 # one-body terms are all zero in flat Landau level
-scat = ED_sortedScatteringList_twobody(para);
+scat = ED_sortedScatterList_twobody(para);
 
 Neigen = 10;  # Number of eigenvalues to compute per block
 energies = Vector{Vector{Float64}}(undef, length(blocks));
@@ -85,7 +85,7 @@ energies[bn]./Nk
 mapping = MomentumED.create_state_mapping(blocks[bn]);
 myvec = MBS64Vector(vectors[bn][1], mapping);
 
-densities = MBSOperator[density_operator(q1, q2, 1, 1; para=para)
+densities = MBOperator[density_operator(q1, q2, 1, 1; para=para)
     for q1 in -2Gk[1]:2Gk[1], q2 in -2Gk[2]:2Gk[2]
 ];
 begin
@@ -144,7 +144,7 @@ begin
 
         println("path point #$i \t $(path[i+1])")
 
-        scat_list = ED_sortedScatteringList_twobody(para; kshift = path[i+1]);
+        scat_list = ED_sortedScatterList_twobody(para; kshift = path[i+1]);
         vecs = EDsolve(blocks[bn], scat_list; N = 6,
             showtime = false,
         )[2][1:nstates]
