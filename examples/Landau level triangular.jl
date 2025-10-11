@@ -339,10 +339,10 @@ module LLT
             G = round.(Int64, kf_coord .- ki_coord .- q_coord, RoundNearest)
             sign = ita(G[1], G[2])
 
-            push!(scats, MomentumED.NormalScatter(sign*F*phase, index_f, index_i; hermitian_upper_triangular = false))
+            push!(scats, MomentumED.NormalScatter(sign*F*phase, index_f, index_i; upper_hermitian = false))
         end
 
-        return MBOperator{Float64}(scats; upper_triangular = false)
+        return MBOperator{Float64}(scats; upper_hermitian = false)
     end
 
 

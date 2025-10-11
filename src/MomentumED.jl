@@ -6,13 +6,13 @@ This module only sets sectors of total (crystal) momentum, also called blocks.
 module MomentumED
 
 # type
-export MBS64, MBS64Vector, Scatter, MBOperator
-public get_bits, create_state_mapping
+export MBS64, HilbertSubspace, MBS64Vector, Scatter, MBOperator
+public get_bits, create_state_mapping, make_dict!, delete_dict!
 export ED_bracket, ED_bracket_threaded, multiplication_threaded
 
 # preparation
-public ED_mbslist_onecomponent
-export EDPara, ED_mbslist, ED_momentum_block_division
+public mbslist_onecomponent
+export EDPara, ED_momentum_subspaces
 export ED_sortedScatterList_onebody
 export ED_sortedScatterList_twobody
 
@@ -84,7 +84,7 @@ println("Ground state energy: ", vals[1])
 """
 function krylov_matrix_solve(
     H::SparseMatrixCSC{Complex{eltype}}, N_eigen::Int64;
-    ishermitian = true, krylovkit_kwargs...
+    ishermitian::Bool = true, krylovkit_kwargs...
 )::Tuple{Vector{eltype}, Vector{Vector{Complex{eltype}}}, Any} where {eltype<:AbstractFloat}
 
     vec0 = rand(Complex{eltype}, H.m)
@@ -97,7 +97,7 @@ end
 
 """
     EDsolve(
-        sorted_mbs_block_list::Vector{<: MBS64}, 
+        subspace::HilbertSubspace, 
         sorted_scat_lists::Vector{<: Scatter}...;
         N::Int64 = 6, showtime = false, method = :sparse,
         element_type::Type = Float64, index_type::Type = Int64, 
@@ -108,7 +108,7 @@ Main interface function for exact diagonalization of momentum-conserved quantum 
 Constructs the sparse Hamiltonian matrix from Scatter lists and diagonalizes it.
 
 # Arguments
-- `sorted_mbs_block_list::Vector{<: MBS64}`: Sorted list of many-body states in the momentum block
+- `subspace::HilbertSubspace`: Sorted list of many-body states in the momentum block
 - `sorted_scat_list::Vector{<: Scatter}`: Sorted Scatter terms (one-body, two-body, etc.)
 - `N_eigen::Int64=6`: Number of eigenvalues/eigenvectors to compute (default: 6)
 
@@ -135,11 +135,11 @@ println("Ground state energy: ", energies[1])
 ```
 """
 function EDsolve(
-    sorted_mbs_block_list::Vector{<: MBS64}, sorted_scat_lists::Vector{<: Scatter}...;
-    N::Int64 = 6, showtime = false, method = :sparse,
-    element_type::Type = Float64, index_type::Type = Int64, 
+    subspace::HilbertSubspace, sorted_scat_lists::Vector{<: Scatter}...;
+    N::Int64 = 6, showtime::Bool = false, method::Symbol = :sparse,
+    element_type::Type = Float64, index_type::Type = idtype(subspace), 
     min_sparse_dim::Int64 = 100, max_dense_dim::Int64 = 200,
-    krylovkit_kwargs...)
+    ishermitian::Bool = true, krylovkit_kwargs...)
 
 
 
@@ -150,22 +150,24 @@ function EDsolve(
     elseif method == :sparse || method == :dense
 
         @assert max_dense_dim > min_sparse_dim
-        if method == :sparse && length(sorted_mbs_block_list) < min_sparse_dim
+        if method == :sparse && length(subspace) < min_sparse_dim
             @warn "Hilbert space dimension < $min_sparse_dim; switch to method=:dense automatically."
             method = :dense
         end
-        if method == :dense && length(sorted_mbs_block_list) > max_dense_dim
+        if method == :dense && length(subspace) > max_dense_dim
             @warn "Hilbert space dimension > $max_dense_dim; switch to method=:sparse automatically."
             method = :sparse
         end
 
+        @assert ishermitian "Current Hamiltonian matrix construction assumes it being Hermitian."
+
         # Construct sparse Hamiltonian matrix from Scatter terms
         if showtime
-            @time H = ED_HamiltonianMatrix_threaded(sorted_mbs_block_list, sorted_scat_lists...;
+            @time H = ED_HamiltonianMatrix_threaded(subspace, sorted_scat_lists...;
                 element_type = element_type, index_type = index_type
             )
         else
-            H = ED_HamiltonianMatrix_threaded(sorted_mbs_block_list, sorted_scat_lists...;
+            H = ED_HamiltonianMatrix_threaded(subspace, sorted_scat_lists...;
                 element_type = element_type, index_type = index_type
             )
         end
@@ -174,9 +176,9 @@ function EDsolve(
 
             # Solve the eigenvalue problem
             if showtime
-                @time vals, vecs, _ = krylov_matrix_solve(H, N; krylovkit_kwargs...)
+                @time vals, vecs, _ = krylov_matrix_solve(H, N; ishermitian, krylovkit_kwargs...)
             else
-                vals, vecs, _ = krylov_matrix_solve(H, N; krylovkit_kwargs...)
+                vals, vecs, _ = krylov_matrix_solve(H, N; ishermitian, krylovkit_kwargs...)
             end
 
         elseif method == :dense
@@ -188,10 +190,18 @@ function EDsolve(
             N > dim && (N = dim)
 
             # Convert to dense matrix and solve
-            if showtime
-                @time vals, vecs = eigen(Hermitian(Matrix(H)))
+            if ishermitian
+                if showtime
+                    @time vals, vecs = eigen(Hermitian(Matrix(H)))
+                else
+                    vals, vecs = eigen(Hermitian(Matrix(H)))
+                end
             else
-                vals, vecs = eigen(Hermitian(Matrix(H)))
+                if showtime
+                    @time vals, vecs = eigen(Matrix(H))
+                else
+                    vals, vecs = eigen(Matrix(H))
+                end
             end
             vals = vals[1:N]
             vecs = vecs[:, 1:N]

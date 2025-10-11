@@ -20,7 +20,7 @@ struct MBOperator{F <: AbstractFloat}
     function MBOperator{F}(scats::Vector{<:Scatter}...; 
         upper_hermitian::Bool) where {F<:AbstractFloat}
         allscats = reduce(vcat, scats)
-        if upper_triangular
+        if upper_hermitian
             @assert all(isnormalupper,  allscats) "Scatter terms should all in normal order and in the upper triangular."
         else
             @assert all(isnormal, allscats) "Scatter terms should all in normal order."

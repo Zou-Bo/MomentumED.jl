@@ -46,7 +46,7 @@ end
 """
 mutable struct HilbertSubspace{bits}
     list::Vector{MBS64{bits}}
-    dict::Dict{MBS64{bits}, Integer}
+    dict::Dict{MBS64{bits}, <: Integer}
 
     function HilbertSubspace(sorted_list::Vector{MBS64{bits}}; dict::Bool = false, index_type::Type = Int64) where {bits}
         @assert issorted(sorted_list)
@@ -61,16 +61,13 @@ end
 function idtype(space::HilbertSubspace)::Type
     valtype(space.dict)
 end
-
 function make_dict!(space::HilbertSubspace; index_type::Type = idtype(space))
     space.dict = create_state_mapping(space.list, index_type)
 end
-
 function delete_dict!(space::HilbertSubspace)
     empty!(space.dict)
 end
 
-import Base.get
 function Base.get(space::HilbertSubspace{bits}, mbs::MBS64{bits})::Int64 where {bits}
     if length(space.dict) != 0
         return get(space.dict, mbs, 0)
@@ -86,8 +83,12 @@ function get_from_dict(space::HilbertSubspace{bits}, mbs::MBS64{bits})::Int64 wh
     get(space.dict, mbs, 0)
 end
 
-import Base: length
-length(space::HilbertSubspace) = length(space.list)
+Base.length(space::HilbertSubspace) = length(space.list)
+
+function Base.show(io::IO, ::MIME"text/plain", space::HilbertSubspace{bits}) where {bits}
+    println(io, "Hilbert subspace {dim = $bits}, dict = $(!isempty(space.dict))")
+    show(io, MIME"text/plain"(), space.list)
+end
 
 """
     struct MBS64Vector{bits, F<: Real}
@@ -114,7 +115,7 @@ import Base: length, similar, copy, size
 import LinearAlgebra: dot
 function Base.show(io::IO, ::MIME"text/plain", mbs_vec::MBS64Vector{bits, F}) where {bits, F <: AbstractFloat}
     print(io, "MBS64Vector{$bits, $F}, ")
-    show(io, MIME"text/plain"() ,mbs_vec.vec)
+    show(io, MIME"text/plain"(), mbs_vec.vec)
 end
 length(mbs_vec::MBS64Vector) = length(mbs_vec.vec)
 size(mbs_vec::MBS64Vector) = (length(mbs_vec.vec), )

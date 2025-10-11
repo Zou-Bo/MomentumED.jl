@@ -98,7 +98,8 @@ function mul_add!(collect_result::MBS64Vector{bits, eltype},
     scat::Scatter{N}, mbs_vec::MBS64Vector{bits, eltype},
     upper_hermitian::Bool) where{N, bits, eltype <: AbstractFloat}
 
-    for (mbs_in, j) in mbs_vec.space
+    # for (mbs_in, j) in mbs_vec.space.dict
+    for (j, mbs_in) in emulate(mbs_vec.space.list)
         amp, mbs_out = scat * mbs_in
         iszero(amp) && continue
         i = get(collect_result.space, mbs_out)
@@ -167,7 +168,8 @@ function mul_add_bracket!(mbs_vec_bra::MBS64Vector{bits, eltype},
     upper_hermitian::Bool)::Complex{eltype} where{bits, eltype <: AbstractFloat}
 
     collect_result::Complex{eltype} = 0.0
-    for (mbs_in, j) in mbs_vec_ket.space
+    # for (mbs_in, j) in mbs_vec_ket.space.dict
+    for (j, mbs_in) in emulate(mbs_vec_ket.space.list)
         amp, mbs_out = scat * mbs_in
         iszero(amp) && continue
         i = get(mbs_vec_bra.space, mbs_out)
@@ -226,7 +228,8 @@ function mul_add_bracket!(mbs_vec_bra::MBS64Vector{bits, eltype},
     )::Complex{eltype} where{bits, eltype <: AbstractFloat}
 
     collect_result::Complex{eltype} = 0.0
-    for (mbs_in, j) in mbs_vec_ket.space
+    # for (mbs_in, j) in mbs_vec_ket.space.dict
+    for (j, mbs_in) in emulate(mbs_vec_ket.space.list)
         amp, mbs_out = scat2 * (scat1 * mbs_in)
         iszero(amp) && continue   # necessary for multiple Scatter without middle dictionary
         i = get(mbs_vec_bra.space, mbs_out)
@@ -299,15 +302,16 @@ threaded version
 use reverse Scatter search.
 """
 function mul_add_reverse!(collect_result::MBS64Vector{bits, eltype},
-    mbs_out::MBS64{bits}, i::idtype,
+    mbs_out::MBS64{bits}, i::Int64,
     op::MBOperator{eltype}, mbs_vec_in::MBS64Vector{bits, eltype}
-    )where{bits, eltype <: AbstractFloat, idtype <: Integer}
+    )where{bits, eltype <: AbstractFloat}
 
     for scat in op.scats
         amp, mbs_in = mbs_out * scat
         if op.upper_hermitian && iszero(amp)
             amp, mbs_in = mbs_out * scat'
         end
+        iszero(amp) && continue
         j = get(mbs_vec_in.space, mbs_in)
         @boundscheck if iszero(i)
             throw(DimensionMismatch("The operator scatters the state out of its Hilbert subspace."))
@@ -326,7 +330,8 @@ function mul_reverse!(mbs_vec_result::MBS64Vector{bits, eltype},
     
     @boundscheck mbs_vec_result.space == mbs_vec.space || throw(DimensionMismatch("mul! shouldn't change MBSVector Hilbert subspace."))
 
-    for (mbs_out, i) in mbs_vec_result.space
+    # for (mbs_out, i) in mbs_vec_result.space.dict
+    for (i, mbs_out) in emulate(mbs_vec_result.space.list)
         mul_add_reverse!(mbs_vec_result, mbs_out, i, op, mbs_vec)
     end
 
@@ -338,7 +343,8 @@ function mul_reverse_threaded!(mbs_vec_result::MBS64Vector{bits, eltype},
     
     @boundscheck mbs_vec_result.space == mbs_vec.space || throw(DimensionMismatch("mul! shouldn't change MBSVector Hilbert subspace."))
 
-    Threads.@threads :greedy for (mbs_out, i) in mbs_vec_result.space
+    # Threads.@threads :greedy for (mbs_out, i) in mbs_vec_result.space.dict
+    Threads.@threads for (i, mbs_out) in emulate(mbs_vec_result.space.list)
         mul_add_reverse!(mbs_vec_result, mbs_out, i, op, mbs_vec)
     end
 

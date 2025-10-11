@@ -162,7 +162,6 @@ energies[bn]./Nk
 
 
 
-mapping = MomentumED.create_state_mapping(blocks[bn]);
 vec331_1 = MBS64Vector(vectors[bn][1], mapping);
 
 

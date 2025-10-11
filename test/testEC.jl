@@ -28,8 +28,8 @@ function plot_ed_spectrum(subtitle=nothing)
     linkxaxes!(ax, ax_top)
 
     # Plot energy levels for each momentum block
-    for i in 1:length(blocks)
-        x = Gk[2] * block_k1[i] + block_k2[i]
+    for i in 1:length(subspaces)
+        x = Gk[2] * ss_k1[i] + ss_k2[i]
         push!(top_ticks[1], x)
         push!(top_ticks[2], string(i))
         for e in energies[i]
@@ -43,11 +43,11 @@ function plot_ed_spectrum(subtitle=nothing)
     fig
 end
 
-# Define k-mesh for bilayer system (4×3 mesh, Nk=12) in triangular lattice
-k_list = [0 1 2 3 0 1 2 3 0 1 2 3;
-          0 0 0 0 1 1 1 1 2 2 2 2]
+# Define k-mesh for bilayer system in triangular lattice
+k_list = [0 1 2 0 1 2 0 1 2 0 1 2;
+          0 0 0 1 1 1 2 2 2 3 3 3]
 Nk = 12
-Gk = (4, 3)  # Grid dimensions
+Gk = (3, 4)  # Grid dimensions
 
 # number of electrons in each layer
 Ne1 = 6
@@ -80,10 +80,10 @@ sys_int = LandauInteraction(
 sys_int.D_l = 10.0                  # Screening length D/l
 sys_int.d_l = 0.1                  # Inter-layer distance d/l
 # compute the pseudo-potential components
-intra_PP = LLT.pseudo_potential_decomposition.(0:15; same_layer = true,  D_l = sys_int.D_l, d_l = sys_int.d_l)
-inter_PP = LLT.pseudo_potential_decomposition.(0:15; same_layer = false, D_l = sys_int.D_l, d_l = sys_int.d_l)
-@show intra_PP
-@show inter_PP
+intra_PP = LLT.pseudo_potential_decomposition.(0:15; same_layer = true,  D_l = sys_int.D_l, d_l = sys_int.d_l);
+inter_PP = LLT.pseudo_potential_decomposition.(0:15; same_layer = false, D_l = sys_int.D_l, d_l = sys_int.d_l);
+@show intra_PP;
+@show inter_PP;
 
 # Haldane pseudo-potential
 # sys_int.V_intra = [0.0; 0.8; 0.0; 0.4]          # Intralayer Haldane pseudo-potential in unit of W0
@@ -109,7 +109,7 @@ para_conserve = EDPara(
 
 NG = 2
 index_shift = NG .* Gk .+ 1
-densities = MBOperator[density_operator(q1, q2, lf, li; para=para_conserve)
+densities = MBOperator[density_operator(q1, q2, lf, li; para=para_conserve, form_factor=true)
     for q1 in -NG*Gk[1]:NG*Gk[1], q2 in -NG*Gk[2]:NG*Gk[2], lf = 1:2, li=1:2
 ];
 function structure_factor_expectation(myvec)
@@ -133,9 +133,11 @@ end
 
 
 # Create momentum blocks for bilayer system
-blocks, block_k1, block_k2, k0number = 
-    ED_momentum_block_division(para_conserve, ED_mbslist(para_conserve, (Ne1,Ne2)));
-display(length.(blocks))
+subspaces, ss_k1, ss_k2 = 
+    ED_momentum_subspaces(para_conserve, (Ne1, Ne2), dict = false, index_type = Int32);
+length.(subspaces)
+subspaces[5]
+MomentumED.idtype(subspaces[1])
 
 # Generate Scatter lists for efficient Hamiltonian construction
 scat_list1_conserve = ED_sortedScatterList_onebody(para_conserve);
@@ -143,12 +145,12 @@ scat_list2_conserve = ED_sortedScatterList_twobody(para_conserve);
 
 
 Neigen = 10  # Number of eigenvalues to compute per block
-energies = Vector{Vector{Float64}}(undef, length(blocks));
-vectors = Vector{Vector{Vector{ComplexF64}}}(undef, length(blocks));
-for i in eachindex(blocks)
-    println("Processing block #$i with size $(length(blocks[i])), momentum $(block_k1[i]), $(block_k2[i])")
-    energies[i], vectors[i] = EDsolve(blocks[i], scat_list2_conserve, scat_list1_conserve;
-        N = Neigen, showtime=true
+energies = Vector{Vector{Float64}}(undef, length(subspaces));
+vectors = Vector{Vector{Vector{ComplexF64}}}(undef, length(subspaces));
+for i in eachindex(subspaces)
+    println("Processing block #$i with size $(length(subspaces[i])), momentum $(ss_k1[i]), $(ss_k2[i])")
+    energies[i], vectors[i] = EDsolve(subspaces[i], scat_list2_conserve, scat_list1_conserve;
+        N=Neigen, showtime=true, ishermitian=true
     )
 end
 
@@ -160,8 +162,7 @@ energies[bn]./Nk
 
 
 
-mapping = MomentumED.create_state_mapping(blocks[bn]);
-myvec39 = MBS64Vector(vectors[bn][1], mapping);
+myvec39 = MBS64Vector(vectors[bn][1], subspaces[bn]);
 
 @time str_fac39 = structure_factor_expectation(myvec39);
 maximum(abs.(imag.(str_fac39)))

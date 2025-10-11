@@ -27,20 +27,22 @@ Threaded version of generating Hamiltonian Matrix with pre-computed state mappin
 
 # Notes
 Uses COO format construction with thread-local storage for better parallel performance.
-Provides 4-8x speedup for medium to large systems compared to the basic version.
+Provides 4-8x speedup for medium to large systems compared to the one-thread version.
 """
 function ED_HamiltonianMatrix_threaded(
-    sorted_mbs_block_list::Vector{<: MBS64}, 
+    subspace::HilbertSubspace, 
     sorted_scat_lists::Vector{<: Scatter}...;
-    element_type::Type = Float64, index_type::Type = Int64,
+    element_type::Type = Float64, index_type::Type = idtype(subspace),
 )::SparseMatrixCSC
 
-    @assert element_type ∈ (Float64, Float32, Float16) "Use element_type Float64, Float32, or Float16."
-    @assert index_type ∈ (Int64, Int32, Int16, Int8) "Use index_type Int64, Int32, Int16, or Int8."
+    @assert element_type ∈ (Float64, Float32) "element_type=$element_type. Use element_type Float64, Float32."
+    @assert index_type ∈ (Int64, Int32, Int16, Int8, UInt64, UInt32, UInt16, UInt8) """
+    index_type=$index_type. Use index_type Int64, Int32, Int16, Int8, UInt64, UInt32, UInt16, or UInt8."""
+    @assert isempty(subspace.dict) || index_type == index_type(subspace) """
+    Input index_type is inconsistant to subspace dictionary index type."""
 
-    n_states = length(sorted_mbs_block_list)
+    n_states = length(subspace)
     @assert n_states <= typemax(index_type) "Hilbert space too large for $index_type."
-    # state_mapping = create_state_mapping(sorted_mbs_block_list)
     
     # Thread-local storage for COO format
     n_threads = Threads.nthreads()
@@ -49,43 +51,21 @@ function ED_HamiltonianMatrix_threaded(
     thread_V = [Vector{Complex{element_type}}() for _ in 1:n_threads]
     
     # Parallel construction over columns
-    Threads.@threads for j in 1:n_states
-        tid = Threads.threadid() - Threads.nthreads(:interactive)
-        mbs_in = sorted_mbs_block_list[j]
+    # Threads.@threads 
+    for j in 1:n_states
+        tid = Threads.threadid()# - Threads.nthreads(:interactive)
+        mbs_in = subspace.list[j]
         
         for scat_list in sorted_scat_lists
             for scat in scat_list
                 amp, mbs_out = scat * mbs_in
                 if !iszero(amp)
-                    # i = get(state_mapping, mbs_out, 0)
-                    i = my_searchsortedfirst(sorted_mbs_block_list, mbs_out)
+                    i = get(subspace, mbs_out)
                     @assert i != 0 "H is not momentum- or component-conserving."
                     push!(thread_I[tid], i)
                     push!(thread_J[tid], j)
                     push!(thread_V[tid], amp)
                 end
-                # if isoccupied(mbs_in, scat.in...)
-                #     if scat.in == scat.out
-                #         # Diagonal term
-                #         push!(thread_I[tid], j)
-                #         push!(thread_J[tid], j)
-                #         push!(thread_V[tid], scat.Amp)
-                #     else
-                #         # Off-diagonal term
-                #         mbs_mid = empty!(mbs_in, scat.in...; check=false)
-                #         if isempty(mbs_mid, scat.out...)
-                #             mbs_out = occupy!(mbs_mid, scat.out...; check=false)
-                #             # i = get(state_mapping, mbs_out, 0)
-                #             i = my_searchsortedfirst(sorted_mbs_block_list, mbs_out)
-                #             @assert i != 0 "H is not momentum- or component-conserving."
-
-                #             sign_occ = (-1)^(scat_occ_number(mbs_mid, scat.in) + scat_occ_number(mbs_mid, scat.out))
-                #             push!(thread_I[tid], i)
-                #             push!(thread_J[tid], j)
-                #             push!(thread_V[tid], sign_occ * scat.Amp)
-                #         end
-                #     end
-                # end
             end
         end
     end

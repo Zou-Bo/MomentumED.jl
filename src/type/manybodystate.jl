@@ -23,11 +23,11 @@ fits within the specified number of bits.
 
 This may generate unphysical state.
 """
-struct MBS64{bits} <: Unsigned
+struct MBS64{bits} # <: Unsigned
     n::UInt64
     
     function MBS64{bits}(state::UInt64) where {bits}
-        @assert bits isa Integer && 0 < bits <= 64 "The number of bits must be an integer between 1 and 64."
+        @assert bits isa Integer && 0 <= bits <= 64 "The number of bits must be an integer between 1 and 64."
         if bits < 64
             @assert state < (UInt64(1) << bits) "State representation out of range for given bits"
         else
@@ -44,8 +44,9 @@ end
 Display the MBS64 state in a human-readable format showing the bit pattern.
 """
 function Base.show(io::IO, mbs::MBS64{bits}) where bits
-    print(io, "MBS64: ", mbs.n, " = ", view(reverse(bitstring(mbs.n)), 1:bits), " ($bits bits)")
-    if !isempty(findall(==('1'), view(reverse(bitstring(mbs.n)), bits+1:64)))
+    bs = reverse(bitstring(mbs.n))
+    print(io, "MBS64: ", mbs.n, " = ", view(bs, 1:bits), " ($bits bits)")
+    if !isempty(findall(==('1'), view(bs, bits+1:64)))
         println(io, " (Unphysical bits are occupied in MBS64.)")
         @warn "Unphysical bits are occupied in MBS64."
     end
@@ -56,7 +57,7 @@ end
 
 Return the bits of the type of input mbs state.
 """
-function get_bits(x::MBS64{bits}) where{bits}
+function get_bits(::MBS64{bits}) where{bits}
     bits
 end
 
@@ -69,13 +70,13 @@ function isphysical(mbs::MBS64{bits})::Bool where{bits}
     if bits < 64
         mbs.n < (UInt64(1) << bits) && return true
     else
-        state <= typemax(UInt64) && return true
+        mbs.n <= typemax(UInt64) && return true
     end
     return false
 end
 
 # Basic operations
-import Base: *, <, ==, hash
+import Base: *, ==, hash
 
 """
     *(mbs1::MBS64{b1}, mbs2::MBS64{b2}) where {b1, b2}
@@ -88,11 +89,11 @@ function *(mbs1::MBS64{b1}, mbs2::MBS64{b2}) where {b1, b2}
 end
 
 """
-    <(mbs1::MBS64{b}, mbs2::MBS64{b}) where {b}
+    isless(mbs1::MBS64{b}, mbs2::MBS64{b}) where {b}
 
 Comparison operators for sorting MBS64 states.
 """
-<(mbs1::MBS64{b}, mbs2::MBS64{b}) where {b} = mbs1.n < mbs2.n
+Base.isless(mbs1::MBS64{b}, mbs2::MBS64{b}) where {b} = mbs1.n < mbs2.n
 
 
 """
@@ -121,11 +122,11 @@ function occ_list(mbs::MBS64{bits}) where {bits}
 end
 
 """
-    MBS64(bits, occ_list::Int64...)
+    MBS64(bits, occ_list)
 
-Construct an MBS64 from a list of occupied orbital indices (1-based).
+Construct an MBS64 from a iteratable list of occupied orbital. 
 """
-function MBS64(bits, occ_list::Int64...)
+function MBS64(bits, occ_list)
     state = UInt64(0)
     for i in occ_list
         @boundscheck @assert 1 <= i <= bits "Occupied state index out of bounds"
