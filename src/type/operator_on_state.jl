@@ -99,7 +99,7 @@ function mul_add!(collect_result::MBS64Vector{bits, eltype},
     upper_hermitian::Bool) where{N, bits, eltype <: AbstractFloat}
 
     # for (mbs_in, j) in mbs_vec.space.dict
-    for (j, mbs_in) in emulate(mbs_vec.space.list)
+    for (j, mbs_in) in enumerate(mbs_vec.space.list)
         amp, mbs_out = scat * mbs_in
         iszero(amp) && continue
         i = get(collect_result.space, mbs_out)
@@ -115,7 +115,7 @@ end
 Use mul_add!() to avoid heap allocation.
 """
 function mul!(mbs_vec_result::MBS64Vector{bits, eltype}, 
-    op::MBOperator{eltype}, mbs_vec::MBS64Vector{bits, eltype}
+    op::MBOperator, mbs_vec::MBS64Vector{bits, eltype}
     ) where {bits, eltype <: AbstractFloat}
     
     mbs_vec_result.vec .= 0.0
@@ -131,7 +131,7 @@ end
 Applying one or two operators on a many-body state.
 More number of operators is not supported and should be implemented in steps.
 """
-function *(op::MBOperator{eltype}, mbs_vec_in::MBS64Vector{bits, eltype}
+function *(op::MBOperator, mbs_vec_in::MBS64Vector{bits, eltype}
     )::MBS64Vector{bits, eltype} where {bits, eltype <: AbstractFloat}
     
     mbs_vec_out = similar(mbs_vec_in)
@@ -139,7 +139,7 @@ function *(op::MBOperator{eltype}, mbs_vec_in::MBS64Vector{bits, eltype}
     return mbs_vec_out
 
 end
-function *(op2::MBOperator{eltype}, op1::MBOperator{eltype}, mbs_vec_in::MBS64Vector{bits, eltype}
+function *(op2::MBOperator, op1::MBOperator, mbs_vec_in::MBS64Vector{bits, eltype}
     )::MBS64Vector{bits, eltype} where {bits, eltype <: AbstractFloat}
 
     mbs_vec_out = similar(mbs_vec_in)
@@ -169,7 +169,7 @@ function mul_add_bracket!(mbs_vec_bra::MBS64Vector{bits, eltype},
 
     collect_result::Complex{eltype} = 0.0
     # for (mbs_in, j) in mbs_vec_ket.space.dict
-    for (j, mbs_in) in emulate(mbs_vec_ket.space.list)
+    for (j, mbs_in) in enumerate(mbs_vec_ket.space.list)
         amp, mbs_out = scat * mbs_in
         iszero(amp) && continue
         i = get(mbs_vec_bra.space, mbs_out)
@@ -192,7 +192,7 @@ end
 compute the bracket <bra::MBS64Vector | op::MBOperator | ket::MBS64Vector>
 """
 function ED_bracket(mbs_vec_bra::MBS64Vector{bits, eltype}, 
-    op::MBOperator{eltype}, mbs_vec_ket::MBS64Vector{bits, eltype}
+    op::MBOperator, mbs_vec_ket::MBS64Vector{bits, eltype}
     )::Complex{eltype} where {bits, eltype <: AbstractFloat}
 
 
@@ -204,7 +204,7 @@ function ED_bracket(mbs_vec_bra::MBS64Vector{bits, eltype},
 end
 
 function ED_bracket_threaded(mbs_vec_bra::MBS64Vector{bits, eltype},
-    op::MBOperator{eltype}, mbs_vec_ket::MBS64Vector{bits, eltype}
+    op::MBOperator, mbs_vec_ket::MBS64Vector{bits, eltype}
     )::Complex{eltype} where {bits, eltype <: AbstractFloat}
 
     # A vector to store the partial result from each thread
@@ -229,7 +229,7 @@ function mul_add_bracket!(mbs_vec_bra::MBS64Vector{bits, eltype},
 
     collect_result::Complex{eltype} = 0.0
     # for (mbs_in, j) in mbs_vec_ket.space.dict
-    for (j, mbs_in) in emulate(mbs_vec_ket.space.list)
+    for (j, mbs_in) in enumerate(mbs_vec_ket.space.list)
         amp, mbs_out = scat2 * (scat1 * mbs_in)
         iszero(amp) && continue   # necessary for multiple Scatter without middle dictionary
         i = get(mbs_vec_bra.space, mbs_out)
@@ -243,7 +243,7 @@ function mul_add_bracket!(mbs_vec_bra::MBS64Vector{bits, eltype},
 end
 
 function ED_bracket(mbs_vec_bra::MBS64Vector{bits, eltype}, 
-    op2::MBOperator{eltype}, op1::MBOperator{eltype}, mbs_vec_ket::MBS64Vector{bits, eltype}
+    op2::MBOperator, op1::MBOperator, mbs_vec_ket::MBS64Vector{bits, eltype}
     )::Complex{eltype} where {bits, eltype <: AbstractFloat}
 
     if op1.upper_hermitian || op2.upper_hermitian
@@ -261,7 +261,7 @@ function ED_bracket(mbs_vec_bra::MBS64Vector{bits, eltype},
 end
 
 function ED_bracket_threaded(mbs_vec_bra::MBS64Vector{bits, eltype},
-    op2::MBOperator{eltype}, op1::MBOperator{eltype}, mbs_vec_ket::MBS64Vector{bits, eltype}
+    op2::MBOperator, op1::MBOperator, mbs_vec_ket::MBS64Vector{bits, eltype}
     )::Complex{eltype} where {bits, eltype <: AbstractFloat}
     
     if op1.upper_hermitian || op2.upper_hermitian
@@ -302,8 +302,7 @@ threaded version
 use reverse Scatter search.
 """
 function mul_add_reverse!(collect_result::MBS64Vector{bits, eltype},
-    mbs_out::MBS64{bits}, i::Int64,
-    op::MBOperator{eltype}, mbs_vec_in::MBS64Vector{bits, eltype}
+    mbs_out::MBS64{bits}, i::Int64, op::MBOperator, mbs_vec_in::MBS64Vector{bits, eltype}
     )where{bits, eltype <: AbstractFloat}
 
     for scat in op.scats
@@ -325,33 +324,33 @@ end
 Use reverse search.
 """
 function mul_reverse!(mbs_vec_result::MBS64Vector{bits, eltype}, 
-    op::MBOperator{eltype}, mbs_vec::MBS64Vector{bits, eltype};
+    op::MBOperator, mbs_vec::MBS64Vector{bits, eltype}
     ) where {bits, eltype <: AbstractFloat}
     
     @boundscheck mbs_vec_result.space == mbs_vec.space || throw(DimensionMismatch("mul! shouldn't change MBSVector Hilbert subspace."))
 
     # for (mbs_out, i) in mbs_vec_result.space.dict
-    for (i, mbs_out) in emulate(mbs_vec_result.space.list)
+    for (i, mbs_out) in enumerate(mbs_vec_result.space.list)
         mul_add_reverse!(mbs_vec_result, mbs_out, i, op, mbs_vec)
     end
 
 end
 
 function mul_reverse_threaded!(mbs_vec_result::MBS64Vector{bits, eltype}, 
-    op::MBOperator{eltype}, mbs_vec::MBS64Vector{bits, eltype};
+    op::MBOperator, mbs_vec::MBS64Vector{bits, eltype}
     ) where {bits, eltype <: AbstractFloat}
     
     @boundscheck mbs_vec_result.space == mbs_vec.space || throw(DimensionMismatch("mul! shouldn't change MBSVector Hilbert subspace."))
 
     # Threads.@threads :greedy for (mbs_out, i) in mbs_vec_result.space.dict
-    Threads.@threads for (i, mbs_out) in emulate(mbs_vec_result.space.list)
+    Threads.@threads for (i, mbs_out) in enumerate(mbs_vec_result.space.list)
         mul_add_reverse!(mbs_vec_result, mbs_out, i, op, mbs_vec)
     end
 
 end
 
 
-function multiplication_threaded(op::MBOperator{eltype}, mbs_vec_in::MBS64Vector{bits, eltype};
+function multiplication_threaded(op::MBOperator, mbs_vec_in::MBS64Vector{bits, eltype};
     multi_thread::Bool = true)::MBS64Vector{bits, eltype} where {bits, eltype <: AbstractFloat}
     
     mbs_vec_out = similar(mbs_vec_in)

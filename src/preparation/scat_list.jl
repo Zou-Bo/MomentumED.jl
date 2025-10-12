@@ -39,7 +39,7 @@ function ED_sortedScatterList_onebody(para::EDPara)
             i_in = k + Nk * (ch2 - 1) + Nk * Nch * (cc - 1)  # input orbital
 
             # Create Scatter term with normal ordering
-            i_in >= i_ot && push!(sct_list1, NormalScatter(V, i_ot, i_in))
+            i_in >= i_ot && push!(sct_list1, NormalScatter(V, i_ot, i_in; upper_hermitian = true))
         end
     end
     
@@ -213,7 +213,7 @@ function scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para
                 )
 
                 amp = (amp_direct - amp_exchange) / sys_size
-                iszero(amp) || push!(Scatter_list, NormalScatter(amp, f1, f2, i2, i1))
+                iszero(amp) || push!(Scatter_list, NormalScatter(amp, f1, f2, i2, i1; upper_hermitian = true))
                 output && println()
             end
         
@@ -323,7 +323,7 @@ function scat_pair_group_index(pair_group::Vector{Tuple{Int64,Int64}}, para::EDP
                 )
 
                 amp = (amp_direct - amp_exchange) / sys_size
-                iszero(amp) || push!(Scatter_list, NormalScatter(amp, f1, f2, i2, i1))
+                iszero(amp) || push!(Scatter_list, NormalScatter(amp, f1, f2, i2, i1; upper_hermitian = true))
                 output && println()
             end
         

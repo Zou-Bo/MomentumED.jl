@@ -342,7 +342,7 @@ module LLT
             push!(scats, MomentumED.NormalScatter(sign*F*phase, index_f, index_i; upper_hermitian = false))
         end
 
-        return MBOperator{Float64}(scats; upper_hermitian = false)
+        return MBOperator(scats; upper_hermitian = false)
     end
 
 

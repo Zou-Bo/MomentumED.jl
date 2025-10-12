@@ -1,3 +1,6 @@
+# to-do list:
+# Scattering{F <: AbstractFloat, N}
+
 
 using Combinatorics
 using LinearAlgebra
@@ -74,7 +77,7 @@ Hermitian Upper Triangular:
 or equlivantly in Julia's grammer
 (3') (j1,...,jN) >= (i1,...,iN)
 """
-function NormalScatter(V::ComplexF64, ij::Int64...; upper_hermitian::Bool = true)::Scatter
+function NormalScatter(V::ComplexF64, ij::Int64...; upper_hermitian::Bool = false)::Scatter
     @assert iseven(length(ij)) "number conservation requires annihilated and created indices number being even"
     N = length(ij) ÷ 2
     @assert N >= 3
@@ -86,44 +89,47 @@ function NormalScatter(V::ComplexF64, ij::Int64...; upper_hermitian::Bool = true
     j_sort = sortperm(js, rev = true)
     i_sorted = is[i_sort]
     j_sorted = js[j_sort]
+
+    # no repetition
+    if reduce(|, [diff(i_sorted); diff(j_sorted)] .== 0; init = false)
+        return Scatter{N}(0.0, tuple(i_sorted), tuple(j_sorted))
+    end
     if isodd(parity(i_sort) + parity(j_sort))
         V = -V
     end
 
-    if j_sorted < i_sorted && upper_hermitian
-        i_sorted, j_sorted = j_sorted, i_sorted
-        V = conj(V)
+    if upper_hermitian
+        if j_sorted < i_sorted
+            i_sorted, j_sorted = j_sorted, i_sorted
+            V = conj(V)
+        elseif j_sorted == i_sort
+            V = real(V) + 0.0im
+        end
     end
 
     return Scatter{N}(V, tuple(i_sorted), tuple(j_sorted))
 end
-function NormalScatter(V::ComplexF64, i::Int64, j::Int64; upper_hermitian::Bool = true)::Scatter{1}
+function NormalScatter(V::ComplexF64, i::Int64, j::Int64; upper_hermitian::Bool = false)::Scatter{1}
     # N = 1
     
-    # Apply normal ordering rules
+    upper_hermitian || return Scatter{1}(V, (i,), (j,))
+
+    # Apply normal ordering rules only when upper_hermitian is required
 
     # j >= i
-    if j < i && upper_hermitian
+    if j < i
         j, i = i, j
         V = conj(V)
-    end
-
-    if j == i
-        V = real(V) + 0im
+    elseif j == i
+        V = real(V) + 0.0im
     end
 
     return Scatter{1}(V, (i,), (j,))
 end
-function NormalScatter(V::ComplexF64, i1::Int64, i2::Int64, j2::Int64, j1::Int64; upper_hermitian::Bool = true)::Scatter{2}
+function NormalScatter(V::ComplexF64, i1::Int64, i2::Int64, j2::Int64, j1::Int64; upper_hermitian::Bool = false)::Scatter{2}
     # N = 2
     
     # Apply normal ordering rules
-
-    # Skip if indices are invalid
-    if j1 == j2 || i1 == i2
-        @warn "Skipping invalid interaction term: $S"
-        return Scatter(0, i1, i2, j2, j1)
-    end
     
     # i1 > i2
     if i1 < i2
@@ -136,21 +142,28 @@ function NormalScatter(V::ComplexF64, i1::Int64, i2::Int64, j2::Int64, j1::Int64
         j1, j2 = j2, j1
         V = -V
     end
+
+    # Skip if indices are invalid
+    if j1 == j2 || i1 == i2
+        @warn "Skipping invalid interaction term: $S"
+        return Scatter(0.0, i1, i2, j2, j1)
+    end
     
     # j1 > i1 or j1 = i1 && j2 > i2
-    if (j1, j2) < (i1, i2) && upper_hermitian
-        j1, i1 = i1, j1
-        j2, i2 = i2, j2
-        V = conj(V)
+    if upper_hermitian
+        if (j1, j2) < (i1, i2) 
+            j1, i1 = i1, j1
+            j2, i2 = i2, j2
+            V = conj(V)
+        elseif (j1, j2) == (i1, i2)
+            V = real(V) + 0.0im
+        end
     end
 
-    if (j1, j2) == (i1, i2)
-        V = real(V) + 0im
-    end
     return Scatter{2}(V, (i1, i2), (j1, j2))
 end
 isnormal(x::Scatter)::Bool = issorted(x.in; rev=true) && issorted(x.out; rev=true)
-isnormalupper(x::Scatter)::Bool = isnormal(x) && x.in >= x.out
+isnormalupper(x::Scatter)::Bool = isnormal(x) && (x.in > x.out || x.in == x.out && iszero(imag(x.Amp)))
 
 
 import Base: adjoint
@@ -162,7 +175,9 @@ isdiagonal(s::Scatter)::Bool = s.in == s.out
 
 
 import Base: isless, ==, +, *
-isless(x::Scatter{N}, y::Scatter{N}) where {N} = x.in < y.in || x.in == y.in && x.out < y.out
+function isless(x::Scatter{Nx}, y::Scatter{Ny}) where {Nx, Ny} 
+    Nx < Nx || Nx == Ny && ( x.in < y.in || x.in == y.in && x.out < y.out )
+end
 ==(x::Scatter{N}, y::Scatter{N}) where {N} = x.in == y.in && x.out == y.out
 function +(x::Scatter{N}, y::Scatter{N})::Scatter{N} where {N}
     @assert x == y "Can only add identical Scatter terms"
@@ -178,9 +193,9 @@ end
 """
 Sort and merge a list of normalized Scatter terms
 """
-function sort_merge_scatlist(normal_sct_list::Vector{Scatter{N}};
+function sort_merge_scatlist(normal_sct_list::Vector{<: Scatter};
     check_normal::Bool = true, check_normalupper::Bool = true
-    )::Vector{Scatter{N}} where {N}
+    )::Vector{<:Scatter}
 
     if check_normalupper
         @assert all(isnormalupper, normal_sct_list) "All Scatter terms must be in normal order and in the upper triangular."
@@ -189,7 +204,7 @@ function sort_merge_scatlist(normal_sct_list::Vector{Scatter{N}};
     end
 
     sorted_list = sort(normal_sct_list)
-    merged_list = Vector{Scatter{N}}()
+    merged_list = Vector{Scatter}()
     for sct in sorted_list
         if !isempty(merged_list) && sct == merged_list[end]
             merged_list[end] += sct

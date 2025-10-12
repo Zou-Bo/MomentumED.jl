@@ -23,7 +23,7 @@ fits within the specified number of bits.
 
 This may generate unphysical state.
 """
-struct MBS64{bits} # <: Unsigned
+struct MBS64{bits}
     n::UInt64
     
     function MBS64{bits}(state::UInt64) where {bits}
@@ -57,7 +57,7 @@ end
 
 Return the bits of the type of input mbs state.
 """
-function get_bits(::MBS64{bits}) where{bits}
+function get_bits(::MBS64{bits})::Integer where{bits}
     bits
 end
 
@@ -145,7 +145,7 @@ Create mask with ones on the assigned bit positions.
 Optimized for one and two occupations.
 """
 function make_mask(occ_list::Int64...)::UInt64
-    # println("sb")
+    @assert length(occ_list) >= 3
     mask = UInt64(0)
     for i in occ_list
         mask |= UInt64(1) << (i - 1)
@@ -228,7 +228,7 @@ function scat_occ_number(mbs::MBS64{bits}, i_list::Vector{Int64}) where {bits}
         return 0
     end
 
-    # println("sb2")
+    @assert N >= 3
 
     @boundscheck @assert 1 <= i_list[1] && i_list[end] <= bits "Invalid bit positions"
 
