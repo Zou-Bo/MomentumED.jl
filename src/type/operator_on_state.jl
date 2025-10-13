@@ -99,7 +99,7 @@ function mul_add!(collect_result::MBS64Vector{bits, eltype},
     upper_hermitian::Bool) where{N, bits, eltype <: AbstractFloat}
 
     # for (mbs_in, j) in mbs_vec.space.dict
-    for (j, mbs_in) in emulate(mbs_vec.space.list)
+    for (j, mbs_in) in enumerate(mbs_vec.space.list)
         amp, mbs_out = scat * mbs_in
         iszero(amp) && continue
         i = get(collect_result.space, mbs_out)
@@ -115,12 +115,14 @@ end
 Use mul_add!() to avoid heap allocation.
 """
 function mul!(mbs_vec_result::MBS64Vector{bits, eltype}, 
-    op::MBOperator{eltype}, mbs_vec::MBS64Vector{bits, eltype}
+    op::MBOperator, mbs_vec::MBS64Vector{bits, eltype}
     ) where {bits, eltype <: AbstractFloat}
     
     mbs_vec_result.vec .= 0.0
-    for scat in op.scats
-        mul_add!(mbs_vec_result, scat, mbs_vec, op.upper_hermitian)
+    for scat_list in op.scats
+        for scat in scat_list
+            mul_add!(mbs_vec_result, scat, mbs_vec, op.upper_hermitian)
+        end
     end
 end
 
@@ -131,7 +133,7 @@ end
 Applying one or two operators on a many-body state.
 More number of operators is not supported and should be implemented in steps.
 """
-function *(op::MBOperator{eltype}, mbs_vec_in::MBS64Vector{bits, eltype}
+function *(op::MBOperator, mbs_vec_in::MBS64Vector{bits, eltype}
     )::MBS64Vector{bits, eltype} where {bits, eltype <: AbstractFloat}
     
     mbs_vec_out = similar(mbs_vec_in)
@@ -139,7 +141,7 @@ function *(op::MBOperator{eltype}, mbs_vec_in::MBS64Vector{bits, eltype}
     return mbs_vec_out
 
 end
-function *(op2::MBOperator{eltype}, op1::MBOperator{eltype}, mbs_vec_in::MBS64Vector{bits, eltype}
+function *(op2::MBOperator, op1::MBOperator, mbs_vec_in::MBS64Vector{bits, eltype}
     )::MBS64Vector{bits, eltype} where {bits, eltype <: AbstractFloat}
 
     mbs_vec_out = similar(mbs_vec_in)
@@ -169,7 +171,7 @@ function mul_add_bracket!(mbs_vec_bra::MBS64Vector{bits, eltype},
 
     collect_result::Complex{eltype} = 0.0
     # for (mbs_in, j) in mbs_vec_ket.space.dict
-    for (j, mbs_in) in emulate(mbs_vec_ket.space.list)
+    for (j, mbs_in) in enumerate(mbs_vec_ket.space.list)
         amp, mbs_out = scat * mbs_in
         iszero(amp) && continue
         i = get(mbs_vec_bra.space, mbs_out)
@@ -192,27 +194,31 @@ end
 compute the bracket <bra::MBS64Vector | op::MBOperator | ket::MBS64Vector>
 """
 function ED_bracket(mbs_vec_bra::MBS64Vector{bits, eltype}, 
-    op::MBOperator{eltype}, mbs_vec_ket::MBS64Vector{bits, eltype}
+    op::MBOperator, mbs_vec_ket::MBS64Vector{bits, eltype}
     )::Complex{eltype} where {bits, eltype <: AbstractFloat}
 
 
     bracket = Complex{eltype}(0.0)
-    for scat in op.scats
-        bracket += mul_add_bracket!(mbs_vec_bra, scat, mbs_vec_ket, op.upper_hermitian)
+    for scat_list in op.scats
+        for scat in scat_list
+            bracket += mul_add_bracket!(mbs_vec_bra, scat, mbs_vec_ket, op.upper_hermitian)
+        end
     end
     return bracket
 end
 
 function ED_bracket_threaded(mbs_vec_bra::MBS64Vector{bits, eltype},
-    op::MBOperator{eltype}, mbs_vec_ket::MBS64Vector{bits, eltype}
+    op::MBOperator, mbs_vec_ket::MBS64Vector{bits, eltype}
     )::Complex{eltype} where {bits, eltype <: AbstractFloat}
 
     # A vector to store the partial result from each thread
     thread_brackets = zeros(Complex{eltype}, Threads.nthreads())
 
-    Threads.@threads for scat in op.scats
-        tid = Threads.threadid() - Threads.nthreads(:interactive)
-        thread_brackets[tid] += mul_add_bracket!(mbs_vec_bra, scat, mbs_vec_ket, op.upper_hermitian)
+    for scat_list in op.scats
+        Threads.@threads for scat in scat_list
+            tid = Threads.threadid() - Threads.nthreads(:interactive)
+            thread_brackets[tid] += mul_add_bracket!(mbs_vec_bra, scat, mbs_vec_ket, op.upper_hermitian)
+        end
     end
 
     # Final reduction
@@ -229,7 +235,7 @@ function mul_add_bracket!(mbs_vec_bra::MBS64Vector{bits, eltype},
 
     collect_result::Complex{eltype} = 0.0
     # for (mbs_in, j) in mbs_vec_ket.space.dict
-    for (j, mbs_in) in emulate(mbs_vec_ket.space.list)
+    for (j, mbs_in) in enumerate(mbs_vec_ket.space.list)
         amp, mbs_out = scat2 * (scat1 * mbs_in)
         iszero(amp) && continue   # necessary for multiple Scatter without middle dictionary
         i = get(mbs_vec_bra.space, mbs_out)
@@ -243,7 +249,7 @@ function mul_add_bracket!(mbs_vec_bra::MBS64Vector{bits, eltype},
 end
 
 function ED_bracket(mbs_vec_bra::MBS64Vector{bits, eltype}, 
-    op2::MBOperator{eltype}, op1::MBOperator{eltype}, mbs_vec_ket::MBS64Vector{bits, eltype}
+    op2::MBOperator, op1::MBOperator, mbs_vec_ket::MBS64Vector{bits, eltype}
     )::Complex{eltype} where {bits, eltype <: AbstractFloat}
 
     if op1.upper_hermitian || op2.upper_hermitian
@@ -252,16 +258,20 @@ function ED_bracket(mbs_vec_bra::MBS64Vector{bits, eltype},
     end 
 
     bracket = Complex{eltype}(0.0)
-    for scat1 in op1.scats
-        for scat2 in op2.scats
-            bracket += mul_add_bracket!(mbs_vec_bra, scat2, scat1, mbs_vec_ket)
+    for scat_list1 in op1.scats
+        for scat1 in scat_list1
+            for scat_list2 in op2.scats
+                for scat2 in scat_list2
+                    bracket += mul_add_bracket!(mbs_vec_bra, scat2, scat1, mbs_vec_ket)
+                end
+            end
         end
     end
     return bracket
 end
 
 function ED_bracket_threaded(mbs_vec_bra::MBS64Vector{bits, eltype},
-    op2::MBOperator{eltype}, op1::MBOperator{eltype}, mbs_vec_ket::MBS64Vector{bits, eltype}
+    op2::MBOperator, op1::MBOperator, mbs_vec_ket::MBS64Vector{bits, eltype}
     )::Complex{eltype} where {bits, eltype <: AbstractFloat}
     
     if op1.upper_hermitian || op2.upper_hermitian
@@ -272,10 +282,14 @@ function ED_bracket_threaded(mbs_vec_bra::MBS64Vector{bits, eltype},
     # A vector to store the partial result from each thread
     thread_brackets = zeros(Complex{eltype}, Threads.nthreads())
 
-    Threads.@threads for scat1 in op1.scats
-        tid = Threads.threadid() - Threads.nthreads(:interactive)
-        for scat2 in op2.scats
-            thread_brackets[tid] += mul_add_bracket!(mbs_vec_bra, scat2, scat1, mbs_vec_ket)
+    for scat_list1 in op1.scats
+        Threads.@threads for scat1 in scat_list1
+            tid = Threads.threadid() - Threads.nthreads(:interactive)
+            for scat_list2 in op2.scats
+                for scat2 in scat_list2
+                    thread_brackets[tid] += mul_add_bracket!(mbs_vec_bra, scat2, scat1, mbs_vec_ket)
+                end
+            end
         end
     end
 
@@ -297,69 +311,68 @@ end
 
 
 
-"""
-threaded version
-use reverse Scatter search.
-"""
-function mul_add_reverse!(collect_result::MBS64Vector{bits, eltype},
-    mbs_out::MBS64{bits}, i::Int64,
-    op::MBOperator{eltype}, mbs_vec_in::MBS64Vector{bits, eltype}
-    )where{bits, eltype <: AbstractFloat}
+# """
+# threaded version
+# use reverse Scatter search.
+# """
+# function mul_add_reverse!(collect_result::MBS64Vector{bits, eltype},
+#     mbs_out::MBS64{bits}, i::Int64, op::MBOperator, mbs_vec_in::MBS64Vector{bits, eltype}
+#     )where{bits, eltype <: AbstractFloat}
 
-    for scat in op.scats
-        amp, mbs_in = mbs_out * scat
-        if op.upper_hermitian && iszero(amp)
-            amp, mbs_in = mbs_out * scat'
-        end
-        iszero(amp) && continue
-        j = get(mbs_vec_in.space, mbs_in)
-        @boundscheck if iszero(i)
-            throw(DimensionMismatch("The operator scatters the state out of its Hilbert subspace."))
-        end
-        collect_result.vec[i] += amp * mbs_vec_in.vec[j]
+#     for scat in op.scats
+#         amp, mbs_in = mbs_out * scat
+#         if op.upper_hermitian && iszero(amp)
+#             amp, mbs_in = mbs_out * scat'
+#         end
+#         iszero(amp) && continue
+#         j = get(mbs_vec_in.space, mbs_in)
+#         @boundscheck if iszero(i)
+#             throw(DimensionMismatch("The operator scatters the state out of its Hilbert subspace."))
+#         end
+#         collect_result.vec[i] += amp * mbs_vec_in.vec[j]
 
-    end
-end
+#     end
+# end
 
-"""
-Use reverse search.
-"""
-function mul_reverse!(mbs_vec_result::MBS64Vector{bits, eltype}, 
-    op::MBOperator{eltype}, mbs_vec::MBS64Vector{bits, eltype};
-    ) where {bits, eltype <: AbstractFloat}
+# """
+# Use reverse search.
+# """
+# function mul_reverse!(mbs_vec_result::MBS64Vector{bits, eltype}, 
+#     op::MBOperator, mbs_vec::MBS64Vector{bits, eltype}
+#     ) where {bits, eltype <: AbstractFloat}
     
-    @boundscheck mbs_vec_result.space == mbs_vec.space || throw(DimensionMismatch("mul! shouldn't change MBSVector Hilbert subspace."))
+#     @boundscheck mbs_vec_result.space == mbs_vec.space || throw(DimensionMismatch("mul! shouldn't change MBSVector Hilbert subspace."))
 
-    # for (mbs_out, i) in mbs_vec_result.space.dict
-    for (i, mbs_out) in emulate(mbs_vec_result.space.list)
-        mul_add_reverse!(mbs_vec_result, mbs_out, i, op, mbs_vec)
-    end
+#     # for (mbs_out, i) in mbs_vec_result.space.dict
+#     for (i, mbs_out) in enumerate(mbs_vec_result.space.list)
+#         mul_add_reverse!(mbs_vec_result, mbs_out, i, op, mbs_vec)
+#     end
 
-end
+# end
 
-function mul_reverse_threaded!(mbs_vec_result::MBS64Vector{bits, eltype}, 
-    op::MBOperator{eltype}, mbs_vec::MBS64Vector{bits, eltype};
-    ) where {bits, eltype <: AbstractFloat}
+# function mul_reverse_threaded!(mbs_vec_result::MBS64Vector{bits, eltype}, 
+#     op::MBOperator, mbs_vec::MBS64Vector{bits, eltype}
+#     ) where {bits, eltype <: AbstractFloat}
     
-    @boundscheck mbs_vec_result.space == mbs_vec.space || throw(DimensionMismatch("mul! shouldn't change MBSVector Hilbert subspace."))
+#     @boundscheck mbs_vec_result.space == mbs_vec.space || throw(DimensionMismatch("mul! shouldn't change MBSVector Hilbert subspace."))
 
-    # Threads.@threads :greedy for (mbs_out, i) in mbs_vec_result.space.dict
-    Threads.@threads for (i, mbs_out) in emulate(mbs_vec_result.space.list)
-        mul_add_reverse!(mbs_vec_result, mbs_out, i, op, mbs_vec)
-    end
+#     # Threads.@threads :greedy for (mbs_out, i) in mbs_vec_result.space.dict
+#     Threads.@threads for (i, mbs_out) in enumerate(mbs_vec_result.space.list)
+#         mul_add_reverse!(mbs_vec_result, mbs_out, i, op, mbs_vec)
+#     end
 
-end
+# end
 
 
-function multiplication_threaded(op::MBOperator{eltype}, mbs_vec_in::MBS64Vector{bits, eltype};
-    multi_thread::Bool = true)::MBS64Vector{bits, eltype} where {bits, eltype <: AbstractFloat}
+# function multiplication_threaded(op::MBOperator, mbs_vec_in::MBS64Vector{bits, eltype};
+#     multi_thread::Bool = true)::MBS64Vector{bits, eltype} where {bits, eltype <: AbstractFloat}
     
-    mbs_vec_out = similar(mbs_vec_in)
-    if multi_thread
-        mul_reverse_threaded!(mbs_vec_out, op, mbs_vec_in)
-    else
-        mul_reverse!(mbs_vec_out, op, mbs_vec_in)
-    end
-    return mbs_vec_out
-end
+#     mbs_vec_out = similar(mbs_vec_in)
+#     if multi_thread
+#         mul_reverse_threaded!(mbs_vec_out, op, mbs_vec_in)
+#     else
+#         mul_reverse!(mbs_vec_out, op, mbs_vec_in)
+#     end
+#     return mbs_vec_out
+# end
 

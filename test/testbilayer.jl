@@ -28,12 +28,11 @@ function plot_ed_spectrum(subtitle=nothing)
     linkxaxes!(ax, ax_top)
 
     # Plot energy levels for each momentum block
-    for i in 1:length(blocks)
-        x = Gk[2] * block_k1[i] + block_k2[i]
+    for i in 1:length(subspaces)
+        x = Gk[2] * ss_k1[i] + ss_k2[i]
         push!(top_ticks[1], x)
         push!(top_ticks[2], string(i))
         for e in energies[i]
-            isnan(e) && continue
             scatter!(ax, x, e/Nk/LLT.W0, color = :blue, marker=:hline)
         end
     end
@@ -63,7 +62,7 @@ Nc_conserve = 2
 
 # H_onebody[c1, c2, cc, k] : no hopping from component c2 to c1
 # For bilayer system: Nc_hopping=1, Nc_conserve=2, No tunneling
-H_onebody_bilayer_no_tunneling = zeros(ComplexF64, 1, 1, Nc_conserve, Nk)
+H_onebody_bilayer_no_tunneling = zeros(ComplexF64, 1, 1, Nc_conserve, Nk);
 for k_idx in 1:Nk
     H_onebody_bilayer_no_tunneling[1, 1, 1, k_idx] = 0.5ΔE
     H_onebody_bilayer_no_tunneling[1, 1, 2, k_idx] = -0.5ΔE
@@ -81,18 +80,18 @@ sys_int = LandauInteraction(
 sys_int.D_l = 10.0                  # Screening length D/l
 sys_int.d_l = 0.1                  # Inter-layer distance d/l
 # compute the pseudo-potential components
-intra_PP = LLT.pseudo_potential_decomposition.(0:3; same_layer = true,  D_l = sys_int.D_l, d_l = sys_int.d_l)
-inter_PP = LLT.pseudo_potential_decomposition.(0:3; same_layer = false, D_l = sys_int.D_l, d_l = sys_int.d_l)
-@show intra_PP;
-@show inter_PP;
+intra_PP = LLT.pseudo_potential_decomposition.(0:5; same_layer = true,  D_l = sys_int.D_l, d_l = sys_int.d_l);
+inter_PP = LLT.pseudo_potential_decomposition.(0:5; same_layer = false, D_l = sys_int.D_l, d_l = sys_int.d_l);
+display(intra_PP);
+display(inter_PP);
 
 # Haldane pseudo-potential
 sys_int.V_intra = [0.0; 0.8; 0.0; 0.0]          # Intralayer Haldane pseudo-potential in unit of W0
 sys_int.V_inter = [1.5; 0.0; 0.0; 0.0]          # Interlayer Haldane pseudo-potential in unit of W0
 
 # or use Coulomb interaction with a cutoff in m
-sys_int.V_intra = copy(intra_PP)
-sys_int.V_inter = copy(inter_PP)
+sys_int.V_intra = copy(intra_PP);
+sys_int.V_inter = copy(inter_PP);
 
 # choose a linear mixing between Haldane and Coulomb interaction
 sys_int.mix = 1                  # mix * Haldane + (1-mix) * Coulomb
@@ -135,51 +134,64 @@ end
 
 
 # Create momentum blocks for bilayer system
-blocks, block_k1, block_k2, k0number = 
-    ED_momentum_block_division(para_bilayer, ED_mbslist(para_bilayer, (Ne1,Ne2)));
-display(length.(blocks))
-
+subspaces, ss_k1, ss_k2 = 
+    ED_momentum_subspaces(para_bilayer, (Ne1, Ne2));
+display(length.(subspaces))
+subspaces[1]
 # Generate Scatter lists for efficient Hamiltonian construction
 scat_list1_conserve = ED_sortedScatterList_onebody(para_bilayer);
 scat_list2_conserve = ED_sortedScatterList_twobody(para_bilayer);
 
 
 Neigen = 10  # Number of eigenvalues to compute per block
-energies = Vector{Vector{Float64}}(undef, length(blocks));
-vectors = Vector{Vector{Vector{ComplexF64}}}(undef, length(blocks));
-for i in eachindex(blocks)[1:1]
-    println("Processing block #$i with size $(length(blocks[i])), momentum $(block_k1[i]), $(block_k2[i])")
-    energies[i], vectors[i] = EDsolve(blocks[i], scat_list2_conserve, scat_list1_conserve;
-        N = Neigen, showtime=true, krylovdim = 25, maxiter = 150, verbosity = 1
+energies = Vector{Vector{Float64}}(undef, length(subspaces));
+vectors = Vector{Vector{<:MBS64Vector}}(undef, length(subspaces));
+for i in eachindex(subspaces)[1:1]
+    println("Processing block #$i with size $(length(subspaces[i])), momentum $(ss_k1[i]), $(ss_k2[i])")
+    energies[i], vectors[i] = EDsolve(subspaces[i], scat_list2_conserve, scat_list1_conserve;
+        N = Neigen, showtime=true, krylovdim = 25, maxiter = 150, verbosity = 2
     )
 end
+
+hmlt = MBOperator(scat_list1_conserve, scat_list2_conserve; upper_hermitian = true)
+
+for i in eachindex(subspaces)[1:1]
+    println("Processing block #$i with size $(length(subspaces[i])), momentum $(ss_k1[i]), $(ss_k2[i])")
+    energies[i], vectors[i] = EDsolve(subspaces[i], hmlt;
+        N = Neigen, showtime=true, krylovdim = 25, maxiter = 150, verbosity = 2
+    )
+end
+
+using MomentumED: LinearMap
+@time hmlt_lm = MomentumED.LinearMap(hmlt, subspaces[1], Float64);
+
+x = rand(ComplexF64, length(subspaces[1]));
+y = similar(x);
+@time hmlt_lm(y, x)
+
 
 plot_ed_spectrum("Ne1=$Ne1   Ne2=$Ne2")
 
 bn = 1;
 energies[bn]./Nk
 
+using MomentumED: ED_HamiltonianMatrix_threaded
+@code_warntype ED_HamiltonianMatrix_threaded(subspaces[1], scat_list2_conserve, scat_list1_conserve);
+@time H = ED_HamiltonianMatrix_threaded(subspaces[1], scat_list2_conserve, scat_list1_conserve);
+
+@time z = H * x;
+maximum(abs.(z .- y))
+
+Base.summarysize(subspaces)
+Base.summarysize(subspaces)
+Base.summarysize(subspaces)
+Base.summarysize(H)
+
+using Combinatorics
+binomial(16, 2)^2 * 16
 
 
-
-vec331_1 = MBS64Vector(vectors[bn][1], mapping);
-
-
-@time ED_bracket(vec331_1, densities[index_shift..., 1,1], vec331_1)
-@time ED_bracket_threaded(vec331_1, densities[index_shift..., 1,1], vec331_1)
-
-@time ED_bracket(vec331_1, 
-    densities[index_shift[1]+1, index_shift[2]+3, 1,1], 
-    densities[index_shift[1]-1, index_shift[2]-3, 1,1], vec331_1
-)
-@time ED_bracket_threaded(vec331_1, 
-    densities[index_shift[1]+1, index_shift[2]+3, 1,1], 
-    densities[index_shift[1]-1, index_shift[2]-3, 1,1], vec331_1
-)
-
-
-
-
+vec331_1 = MBS64Vector(vectors[bn][1], subspaces[bn]);
 
 @time str_fac331_1 = structure_factor_expectation(vec331_1);
 maximum(abs.(imag.(str_fac331_1)))
@@ -189,8 +201,9 @@ str_fac331_1[index_shift..., 2,1].re
 
 
 
-mapping = MomentumED.create_state_mapping(blocks[bn]);
-vec331_2 = MBS64Vector(vectors[bn][2], mapping);
+
+
+vec331_2 = MBS64Vector(vectors[bn][7], subspaces[bn]);
 
 @time str_fac331_2 = structure_factor_expectation(vec331_2);
 maximum(abs.(imag.(str_fac331_2)))

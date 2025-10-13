@@ -42,57 +42,9 @@ include("preparation/init_parameter.jl")
 include("preparation/momentum_decomposition.jl")
 include("preparation/scat_list.jl")
 include("method/sparse_matrix.jl")
-# include("method/linear_map.jl") # in development
+include("method/linear_map.jl")
 
 
-
-
-
-"""
-    matrix_solve(H::SparseMatrixCSC{ComplexF64, Int64}, N_eigen::Int64=6; 
-        converge_warning::Bool=false, krylovkit_kwargs...) -> (vals, vecs)
-
-Solve the sparse Hamiltonian matrix using KrylovKit's eigsolve function for the lowest n eigenvalues and eigenvectors.
-
-# Arguments
-- `H::SparseMatrixCSC{Complex{eltype}, idtype}`: Sparse Hamiltonian matrix to diagonalize
-- `N_eigen::Int64=6`: Number of eigenvalues/eigenvectors to compute (default: 6)
-
-# Keywords
-- `vec0::Vector{Complex{eltype}}=rand(Complex{eltype}, H.m)`: Initial guess vector for Krylov iteration
-- `ishermitian::Bool=true`: Whether the matrix is Hermitian (default: true)
-- `krylovkit_kwargs...`: Additional keyword arguments to pass to KrylovKit.eigsolve
-
-# Returns
-- `vals::Vector{eltype}`: Eigenvalues (energies) in ascending order
-- `vecs::Vector{Vector{Complex{eltype}}}`: Corresponding eigenvectors
-- `info`: Convergence information from KrylovKit
-
-# Examples
-```julia
-# Solve for 3 lowest eigenstates
-vals, vecs, info = matrix_solve(H_matrix, 3)
-println("Ground state energy: ", vals[1])
-```
-
-# Notes
-- Uses KrylovKit's eigsolve with :SR (smallest real) eigenvalue selection
-- Assumes Hermitian matrix (standard for quantum Hamiltonians)
-- Random initial vector ensures good convergence properties
-- Automatically handles convergence warnings from KrylovKit
-- For better control over convergence, consider using KrylovKit directly
-"""
-function krylov_matrix_solve(
-    H::SparseMatrixCSC{Complex{eltype}}, N_eigen::Int64;
-    ishermitian::Bool = true, krylovkit_kwargs...
-)::Tuple{Vector{eltype}, Vector{Vector{Complex{eltype}}}, Any} where {eltype<:AbstractFloat}
-
-    vec0 = rand(Complex{eltype}, H.m)
-
-    N_eigen = min(N_eigen, H.m)
-    vals, vecs, info = eigsolve(H, vec0, N_eigen, :SR; ishermitian, krylovkit_kwargs...)
-    return view(vals, 1:N_eigen), view(vecs, 1:N_eigen), info
-end
 
 
 """
@@ -134,18 +86,17 @@ energies, wavefunctions = EDsolve(blocks[1], Scatter1, Scatter2; N=1)
 println("Ground state energy: ", energies[1])
 ```
 """
-function EDsolve(
-    subspace::HilbertSubspace, sorted_scat_lists::Vector{<: Scatter}...;
+function EDsolve(subspace::HilbertSubspace{bits}, sorted_scat_lists::Vector{<: Scatter}...;
     N::Int64 = 6, showtime::Bool = false, method::Symbol = :sparse,
-    element_type::Type = Float64, index_type::Type = idtype(subspace), 
+    element_type::Type = Float64, index_type::Type = Int64, 
     min_sparse_dim::Int64 = 100, max_dense_dim::Int64 = 200,
-    ishermitian::Bool = true, krylovkit_kwargs...)
-
+    ishermitian::Bool = true, krylovkit_kwargs...
+    ) where {bits}
 
 
     if method == :map
 
-        error("Linear map method is under development. Please use :sparse or :dense method.")
+        error("Linear map method is only used when input Hamitonian is MBOperator instead of Vector{Scatter}.")
 
     elseif method == :sparse || method == :dense
 
@@ -181,6 +132,9 @@ function EDsolve(
                 vals, vecs, _ = krylov_matrix_solve(H, N; ishermitian, krylovkit_kwargs...)
             end
 
+            energies = vals[1:N]
+            vectors = [MBS64Vector(vecs[i], subspace) for i in 1:N]
+
         elseif method == :dense
 
             dim = size(H, 1)
@@ -203,9 +157,9 @@ function EDsolve(
                     vals, vecs = eigen(Matrix(H))
                 end
             end
-            vals = vals[1:N]
-            vecs = vecs[:, 1:N]
-            vecs = [vecs[:, i] for i in 1:N]  # Convert to vector of vectors
+
+            energies = vals[1:N]
+            vectors = [MBS64Vector(vecs[i], subspace) for i in 1:N] # Convert to vector of vectors
 
         end
 
@@ -213,14 +167,46 @@ function EDsolve(
         error("Unknown method: $method. Use :sparse, :dense, or :map.")
     end
 
-    return vals, vecs
+    return energies, vectors
 end
-
-function EDsolve(
-    HilbertSubspace::Dict{MBS64{bits}, idtype}, HamiltonianOperator::MBOperator{eltype};
-    N::Int64 = 6, showtime = false, method = :sparse, 
+function EDsolve(subspace::HilbertSubspace{bits}, Hamiltonian::MBOperator;
+    N::Int64 = 6, showtime::Bool = false, method::Symbol = :sparse,
+    element_type::Type = Float64, index_type::Type = Int64, 
     min_sparse_dim::Int64 = 100, max_dense_dim::Int64 = 200,
-    krylovkit_kwargs...) where{bits, eltype, idtype}
+    ishermitian::Bool = true, krylovkit_kwargs...
+    ) where{bits}
+
+    if ishermitian
+        @assert isupper(Hamiltonian) "Use upper_hermitian form of Hamiltonian operator when ishermitian = true."
+    end
+
+    if method == :map
+
+        dim = length(subspace)
+        if dim < 20000
+            @warn "Linear map may be slow for dim=$dim. Consider using :sparse method."
+        end
+
+        H_map = LinearMap(Hamiltonian, subspace, element_type)
+
+        # Solve the eigenvalue problem
+        if showtime
+            @time vals, vecs, _ = krylov_map_solve(H_map, N; ishermitian, krylovkit_kwargs...)
+        else
+            vals, vecs, _ = krylov_map_solve(H_map, N; ishermitian, krylovkit_kwargs...)
+        end
+
+        energies = vals[1:N]
+        vectors = [MBS64Vector(vecs[i], subspace) for i in 1:N]
+
+        return energies, vectors
+
+    else
+        return EDsolve(subspace, Hamiltonian.scats...; N, showtime, method, 
+            element_type, index_type, min_sparse_dim, max_dense_dim, 
+            ishermitian, krylovkit_kwargs...
+        )
+    end
 
 end
 

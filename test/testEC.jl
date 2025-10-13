@@ -45,7 +45,7 @@ end
 
 # Define k-mesh for bilayer system in triangular lattice
 k_list = [0 1 2 0 1 2 0 1 2 0 1 2;
-          0 0 0 1 1 1 2 2 2 3 3 3]
+        0 0 0 1 1 1 2 2 2 3 3 3]
 Nk = 12
 Gk = (3, 4)  # Grid dimensions
 
@@ -134,8 +134,8 @@ end
 
 # Create momentum blocks for bilayer system
 subspaces, ss_k1, ss_k2 = 
-    ED_momentum_subspaces(para_conserve, (Ne1, Ne2), dict = false, index_type = Int32);
-length.(subspaces)
+    ED_momentum_subspaces(para_conserve, (Ne1, Ne2), dict = false, index_type = Int64);
+display(length.(subspaces))
 subspaces[5]
 MomentumED.idtype(subspaces[1])
 
@@ -146,7 +146,7 @@ scat_list2_conserve = ED_sortedScatterList_twobody(para_conserve);
 
 Neigen = 10  # Number of eigenvalues to compute per block
 energies = Vector{Vector{Float64}}(undef, length(subspaces));
-vectors = Vector{Vector{Vector{ComplexF64}}}(undef, length(subspaces));
+vectors = Vector{Vector{<:MBS64Vector{}}}(undef, length(subspaces));
 for i in eachindex(subspaces)
     println("Processing block #$i with size $(length(subspaces[i])), momentum $(ss_k1[i]), $(ss_k2[i])")
     energies[i], vectors[i] = EDsolve(subspaces[i], scat_list2_conserve, scat_list1_conserve;
@@ -158,6 +158,22 @@ plot_ed_spectrum("Ne1=$Ne1   Ne2=$Ne2")
 
 bn = 7;
 energies[bn]./Nk
+
+MomentumED.make_dict!(subspaces[1]);
+MomentumED.delete_dict!(subspaces[1]);
+
+using MomentumED: ED_HamiltonianMatrix_threaded
+@time ED_HamiltonianMatrix_threaded(subspaces[1], scat_list2_conserve, scat_list1_conserve);
+@code_warntype ED_HamiltonianMatrix_threaded(subspaces[1], scat_list2_conserve, scat_list1_conserve)
+
+
+using Profile
+@profile ED_HamiltonianMatrix_threaded1(subspaces[1], scat_list2_conserve, scat_list1_conserve)
+Profile.print(format=:flat)
+Profile.clear()
+@profile ED_HamiltonianMatrix_threaded2(subspaces[1], scat_list2_conserve, scat_list1_conserve)
+Profile.print(format=:flat)
+Profile.clear()
 
 
 

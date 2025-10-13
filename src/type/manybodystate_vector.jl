@@ -61,6 +61,18 @@ end
 function idtype(space::HilbertSubspace)::Type
     valtype(space.dict)
 end
+function get_bits(::HilbertSubspace{bits})::Integer where{bits}
+    bits
+end
+
+import Base: length, show, get
+length(space::HilbertSubspace) = length(space.list)
+
+function Base.show(io::IO, ::MIME"text/plain", space::HilbertSubspace{bits}) where {bits}
+    println(io, "Hilbert subspace {dim = $bits}, dict = $(!isempty(space.dict))")
+    show(io, MIME("text/plain"), space.list)
+end
+
 function make_dict!(space::HilbertSubspace; index_type::Type = idtype(space))
     space.dict = create_state_mapping(space.list, index_type)
 end
@@ -83,12 +95,12 @@ function get_from_dict(space::HilbertSubspace{bits}, mbs::MBS64{bits})::Int64 wh
     get(space.dict, mbs, 0)
 end
 
-Base.length(space::HilbertSubspace) = length(space.list)
 
-function Base.show(io::IO, ::MIME"text/plain", space::HilbertSubspace{bits}) where {bits}
-    println(io, "Hilbert subspace {dim = $bits}, dict = $(!isempty(space.dict))")
-    show(io, MIME"text/plain"(), space.list)
-end
+
+
+
+
+
 
 """
     struct MBS64Vector{bits, F<: Real}
@@ -101,7 +113,7 @@ It represents a general many-body states in the basis of given MBS64{bits} list.
 
 To save the memory usage, all MBS64Vectors in the same subspace use the same hash table.
 """
-struct MBS64Vector{bits, F <: Real}
+struct MBS64Vector{bits, F <: AbstractFloat}
     vec::Vector{Complex{F}}
     space::HilbertSubspace{bits}
 
@@ -111,11 +123,11 @@ struct MBS64Vector{bits, F <: Real}
     end
 end
 
-import Base: length, similar, copy, size
+import Base: show, length, similar, copy, size
 import LinearAlgebra: dot
 function Base.show(io::IO, ::MIME"text/plain", mbs_vec::MBS64Vector{bits, F}) where {bits, F <: AbstractFloat}
     print(io, "MBS64Vector{$bits, $F}, ")
-    show(io, MIME"text/plain"(), mbs_vec.vec)
+    show(io, MIME("text/plain"), mbs_vec.vec)
 end
 length(mbs_vec::MBS64Vector) = length(mbs_vec.vec)
 size(mbs_vec::MBS64Vector) = (length(mbs_vec.vec), )
