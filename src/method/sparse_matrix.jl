@@ -37,10 +37,8 @@ function ED_HamiltonianMatrix_threaded(
 )::SparseMatrixCSC
 
     @assert element_type ∈ (Float64, Float32) "element_type=$element_type. Use element_type Float64, Float32."
-    @assert index_type ∈ (Int128, Int64, Int32, Int16, UInt128, UInt64, UInt32, UInt16) """
-    index_type=$index_type. Use index_type Int128, Int64, Int32, Int16, Int128, UInt64, UInt32, or UInt16."""
-    @assert isempty(subspace.dict) || index_type == idtype(subspace) """
-    Input index_type is inconsistant to subspace dictionary index type."""
+    @assert index_type ∈ (Int128, Int64, Int32, UInt128, UInt64, UInt32) """
+    index_type=$index_type. Use index_type Int128, Int64, Int32, Int128, UInt64, or UInt32."""
 
     n_states = length(subspace)
     @assert n_states <= typemax(index_type) "Hilbert space too large for $index_type."
@@ -56,14 +54,16 @@ function ED_HamiltonianMatrix_threaded(
         tid = Threads.threadid() - Threads.nthreads(:interactive)
         mbs_in = subspace.list[j]
         
-        for scat in Iterators.flatten(sorted_scat_lists)
-            amp, mbs_out = scat * mbs_in
-            if !iszero(amp)
-                i = get_from_list(subspace, mbs_out)
-                @assert i != 0 "H is not momentum- or component-conserving."
-                push!(thread_I[tid], i)
-                push!(thread_J[tid], j)
-                push!(thread_V[tid], amp)
+        for scat_list in sorted_scat_lists
+            for scat in scat_list
+                amp, mbs_out = scat * mbs_in
+                if !iszero(amp)
+                    i = get(subspace, mbs_out)
+                    @assert i != 0 "H is not momentum- or component-conserving."
+                    push!(thread_I[tid], i)
+                    push!(thread_J[tid], j)
+                    push!(thread_V[tid], amp)
+                end
             end
         end
     end
@@ -81,7 +81,6 @@ function ED_HamiltonianMatrix_threaded(
         return H
     end
 end
-
 
 
 

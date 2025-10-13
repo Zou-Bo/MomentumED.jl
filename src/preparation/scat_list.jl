@@ -24,7 +24,7 @@ para = EDPara(k_list=k_list, Gk=(3, 5), V_int=V_int)
 Scatter1 = ED_sortedScatterList_onebody(para)
 ```
 """
-function ED_sortedScatterList_onebody(para::EDPara)
+function ED_sortedScatterList_onebody(para::EDPara)::Vector{Scatter{1}}
     sct_list1 = Vector{Scatter{1}}()
     Nk = para.Nk
     Nch = para.Nc_hopping
@@ -369,7 +369,8 @@ Scatter2 = ED_sortedScatterList_twobody(para)
 Scatter2_shifted = ED_sortedScatterList_twobody(para; kshift=(0.1, 0.1))
 ```
 """
-function ED_sortedScatterList_twobody(para::EDPara; kshift::Tuple{Float64, Float64} = (0.0, 0.0))
+function ED_sortedScatterList_twobody(para::EDPara; 
+    kshift::Tuple{Float64, Float64} = (0.0, 0.0))::Vector{Scatter{2}}
 
     momentum_groups = group_momentum_pairs(para)
     

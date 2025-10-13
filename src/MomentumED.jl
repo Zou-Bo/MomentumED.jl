@@ -88,7 +88,7 @@ println("Ground state energy: ", energies[1])
 """
 function EDsolve(subspace::HilbertSubspace{bits}, sorted_scat_lists::Vector{<: Scatter}...;
     N::Int64 = 6, showtime::Bool = false, method::Symbol = :sparse,
-    element_type::Type = Float64, index_type::Type = idtype(subspace), 
+    element_type::Type = Float64, index_type::Type = Int64, 
     min_sparse_dim::Int64 = 100, max_dense_dim::Int64 = 200,
     ishermitian::Bool = true, krylovkit_kwargs...
     ) where {bits}
@@ -171,7 +171,7 @@ function EDsolve(subspace::HilbertSubspace{bits}, sorted_scat_lists::Vector{<: S
 end
 function EDsolve(subspace::HilbertSubspace{bits}, Hamiltonian::MBOperator;
     N::Int64 = 6, showtime::Bool = false, method::Symbol = :sparse,
-    element_type::Type = Float64, index_type::Type = idtype(subspace), 
+    element_type::Type = Float64, index_type::Type = Int64, 
     min_sparse_dim::Int64 = 100, max_dense_dim::Int64 = 200,
     ishermitian::Bool = true, krylovkit_kwargs...
     ) where{bits}
@@ -202,9 +202,9 @@ function EDsolve(subspace::HilbertSubspace{bits}, Hamiltonian::MBOperator;
         return energies, vectors
 
     else
-        return EDsolve(subspace, Hamiltonian.scats; N, showtime, method, 
+        return EDsolve(subspace, Hamiltonian.scats...; N, showtime, method, 
             element_type, index_type, min_sparse_dim, max_dense_dim, 
-            ishamiltonian, krylovkit_kwargs...
+            ishermitian, krylovkit_kwargs...
         )
     end
 

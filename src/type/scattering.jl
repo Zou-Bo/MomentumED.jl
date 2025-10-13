@@ -165,6 +165,7 @@ end
 isnormal(x::Scatter)::Bool = issorted(x.in; rev=true) && issorted(x.out; rev=true)
 isnormalupper(x::Scatter)::Bool = isnormal(x) && (x.in > x.out || x.in == x.out && iszero(imag(x.Amp)))
 
+get_body(::Scatter{N}) where {N} = N
 
 import Base: adjoint
 function adjoint(s::Scatter{N})::Scatter{N} where {N}
@@ -175,8 +176,8 @@ isdiagonal(s::Scatter)::Bool = s.in == s.out
 
 
 import Base: isless, ==, +, *
-function isless(x::Scatter{Nx}, y::Scatter{Ny}) where {Nx, Ny} 
-    Nx < Nx || Nx == Ny && ( x.in < y.in || x.in == y.in && x.out < y.out )
+function isless(s1::Scatter{N1}, s2::Scatter{N2}) where {N1, N2} 
+    N1 < N2 || N1 == N2 && ( s1.in < s2.in || s1.in == s2.in && s1.out < s2.out )
 end
 ==(x::Scatter{N}, y::Scatter{N}) where {N} = x.in == y.in && x.out == y.out
 function +(x::Scatter{N}, y::Scatter{N})::Scatter{N} where {N}
@@ -200,11 +201,11 @@ function sort_merge_scatlist(normal_sct_list::Vector{<: Scatter};
     if check_normalupper
         @assert all(isnormalupper, normal_sct_list) "All Scatter terms must be in normal order and in the upper triangular."
     elseif check_normal
-        @assert all(isnorm, normal_sct_list) "All Scatter terms must be in normal order."
+        @assert all(isnormal, normal_sct_list) "All Scatter terms must be in normal order."
     end
 
     sorted_list = sort(normal_sct_list)
-    merged_list = Vector{Scatter}()
+    merged_list = eltype(sorted_list)[]
     for sct in sorted_list
         if !isempty(merged_list) && sct == merged_list[end]
             merged_list[end] += sct
@@ -214,4 +215,71 @@ function sort_merge_scatlist(normal_sct_list::Vector{<: Scatter};
     end
     return merged_list
 end
+function sort_merge_scatlist(normal_sct_list::Vector{Scatter};
+    check_normal::Bool = true, check_normalupper::Bool = true
+    )::Vector{Vector{<:Scatter}}
 
+    if check_normalupper
+        @assert all(isnormalupper, normal_sct_list) "All Scatter terms must be in normal order and in the upper triangular."
+    elseif check_normal
+        @assert all(isnormal, normal_sct_list) "All Scatter terms must be in normal order."
+    end
+
+    body_count = Int64[]
+    merged_list = Vector{<:Scatter}[]
+    for s in normal_sct_list
+        N = get_body(s)
+        i = findfirst(body_count .== N)
+        if isnothing(i)
+            push!(body_count, N)
+            push!(merged_list, Scatter{N}[])
+            i = length(body_count)
+        end
+        push!(merged_list[i], s)
+    end
+    for i in eachindex(merged_list)
+        merged_list[i] = sort_merge_scatlist(merged_list[i]; 
+            check_normal = false, check_normalupper = false)
+    end
+    return merged_list
+end
+function sort_merge_scatlist(normal_sct_lists::Vector{Vector{<:Scatter}};
+    check_normal::Bool = true, check_normalupper::Bool = true
+    )::Vector{Vector{<:Scatter}}
+
+    body_count = Int64[]
+    merged_lists = Vector{<:Scatter}[]
+    for scat_list in normal_sct_lists
+
+        if length(scat_list) == 0
+            continue
+        end
+
+        if eltype(scat_list) == Scatter
+            div_lists = sort_merge_scatlist(scat_list; check_normal = false, check_normalupper = false)
+            for div_list in div_lists
+                N = get_body(div_list[1])
+                i = findfirst(body_count .== N)
+                if isnothing(i)
+                    push!(body_count, N)
+                    push!(merged_lists, Scatter{N}[])
+                    i = length(body_count)
+                end
+                append!(merged_lists[i], div_list)
+            end
+        else
+            N = get_body(scat_list[1])
+            i = findfirst(body_count .== N)
+            if isnothing(i)
+                push!(body_count, N)
+                push!(merged_lists, Scatter{N}[])
+                i = length(body_count)
+            end
+            append!(merged_lists[i], scat_list)
+        end
+    end
+    for i in eachindex(merged_lists)
+        merged_lists[i] = sort_merge_scatlist(merged_lists[i]; check_normal, check_normalupper)
+    end
+    return merged_lists
+end

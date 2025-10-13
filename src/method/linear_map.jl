@@ -10,19 +10,21 @@ using LinearAlgebra
 abstract type AbstractLinearMap{bits, F <: AbstractFloat} end
 
 mutable struct LinearMap{bits, F <: AbstractFloat} <: AbstractLinearMap{bits, F}
-    op::MBOperator
+    scat_lists::Vector{Vector{<:Scatter}}
     space::HilbertSubspace{bits}
 
     function LinearMap(op::MBOperator, space::HilbertSubspace{bits}, element_type::Type) where {bits}
         @assert element_type ∈ (Float64, Float32) "element_type=$element_type. Use element_type Float64, Float32."
         if op.upper_hermitian
-            scats = copy(op.scats)
-            for s in scats
-                if !isdiagonal(s)
-                    push!(scats, s')
+            scats = deepcopy(op.scats)
+            for i in eachindex(op.scats)
+                for s in op.scats[i]
+                    if !isdiagonal(s)
+                        push!(scats[i], s')
+                    end
                 end
             end
-            return new{bits, element_type}(MBOperator(scats; upper_hermitian = false), space)
+            return new{bits, element_type}(scats, space)
         else
             error("Try to create linear map for a Hamiltonian MBOperator that is not upper_hermitian.")
         end
@@ -30,11 +32,11 @@ mutable struct LinearMap{bits, F <: AbstractFloat} <: AbstractLinearMap{bits, F}
 end
 
 mutable struct AdjointLinearMap{bits, F <: AbstractFloat} <: AbstractLinearMap{bits, F}
-    op::MBOperator
+    scat_lists::Vector{Vector{<:Scatter}}
     space::HilbertSubspace{bits}
 
     function AdjointLinearMap(A::LinearMap{bits, F}) where {bits, F <: AbstractFloat}
-        new{bits, F}(A.op, A.space)
+        new{bits, F}(A.scat_lists, A.space)
     end
 end
 
@@ -67,19 +69,21 @@ eltype(::AbstractLinearMap{bits, F}) where {bits, F<:AbstractFloat} = Complex{F}
 
 function (A::LinearMap{bits, F})(y::Vector{Complex{F}}, x::Vector{Complex{F}}) where {bits, F}
     n = length(A.space)
-    if length(y) == n && length(x) == n
+    if length(y) != n && length(x) != n
         throw(DimensionMismatch("Dimension of Hamiltonian linear map mismatches vector length."))
     end
 
     y .= zero(Complex{F})
     list::Vector{MBS64{bits}} = A.space.list
-    Threads.@threads for i in eachindex(list)
-        for scat in A.op.scats
-            amp, mbs_in = list[i] * scat
-            if amp != 0.0
-                j = get(A.space, mbs_in)
-                @assert i != 0 "H is not momentum- or component-conserving."
-                y[i] += amp * x[j]
+    for scat_list in A.scat_lists
+        Threads.@threads for i in eachindex(list)
+            for scat in scat_list
+                amp, mbs_in = list[i] * scat
+                if amp != 0.0
+                    j = get(A.space, mbs_in)
+                    @assert i != 0 "H is not momentum- or component-conserving."
+                    y[i] += amp * x[j]
+                end
             end
         end
     end
@@ -94,13 +98,15 @@ function (A::AdjointLinearMap{bits, F})(y::Vector{Complex{F}}, x::Vector{Complex
 
     y .= zero(Complex{F})
     list::Vector{MBS64{bits}} = A.space.list
-    for i in eachindex(list)
-        for scat in A.op.scats
-            amp, mbs_in = scat * list[i] # adjoint operator: inversely find the mbs_in 
-            if amp != 0.0
-                j = get(A.space, mbs_in)
-                @assert i != 0 "H is not momentum- or component-conserving."
-                y[i] += conj(amp) * x[j] # adjoint operator: conj(amplitute)
+    for scat_list in A.scat_lists
+        Threads.@threads for i in eachindex(list)
+            for scat in scat_list
+                amp, mbs_in = scat * list[i] # adjoint operator: inversely find the mbs_in 
+                if amp != 0.0
+                    j = get(A.space, mbs_in)
+                    @assert i != 0 "H is not momentum- or component-conserving."
+                    y[i] += conj(amp) * x[j] # adjoint operator: conj(amplitute)
+                end
             end
         end
     end
@@ -158,9 +164,9 @@ println("Ground state energy: ", vals[1])
 - For better control over convergence, consider using KrylovKit directly
 """
 function krylov_map_solve(
-    H::LinearMap{eltype}, N_eigen::Int64;
+    H::LinearMap{bits, eltype}, N_eigen::Int64;
     ishermitian::Bool = true, krylovkit_kwargs...
-)::Tuple{Vector{eltype}, Vector{Vector{Complex{eltype}}}, Any} where {eltype<:AbstractFloat}
+)::Tuple{Vector{eltype}, Vector{Vector{Complex{eltype}}}, Any} where {bits, eltype<:AbstractFloat}
 
     m = length(space)
     vec0 = rand(Complex{eltype}, m)

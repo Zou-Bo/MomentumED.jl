@@ -135,7 +135,7 @@ end
 
 # Create momentum blocks for bilayer system
 subspaces, ss_k1, ss_k2 = 
-    ED_momentum_subspaces(para_bilayer, (Ne1, Ne2), dict = false);
+    ED_momentum_subspaces(para_bilayer, (Ne1, Ne2));
 display(length.(subspaces))
 subspaces[1]
 # Generate Scatter lists for efficient Hamiltonian construction
@@ -149,9 +149,26 @@ vectors = Vector{Vector{<:MBS64Vector}}(undef, length(subspaces));
 for i in eachindex(subspaces)[1:1]
     println("Processing block #$i with size $(length(subspaces[i])), momentum $(ss_k1[i]), $(ss_k2[i])")
     energies[i], vectors[i] = EDsolve(subspaces[i], scat_list2_conserve, scat_list1_conserve;
-        N = Neigen, showtime=true, krylovdim = 25, maxiter = 150, verbosity = 1
+        N = Neigen, showtime=true, krylovdim = 25, maxiter = 150, verbosity = 2
     )
 end
+
+hmlt = MBOperator(scat_list1_conserve, scat_list2_conserve; upper_hermitian = true)
+
+for i in eachindex(subspaces)[1:1]
+    println("Processing block #$i with size $(length(subspaces[i])), momentum $(ss_k1[i]), $(ss_k2[i])")
+    energies[i], vectors[i] = EDsolve(subspaces[i], hmlt;
+        N = Neigen, showtime=true, krylovdim = 25, maxiter = 150, verbosity = 2
+    )
+end
+
+using MomentumED: LinearMap
+@time hmlt_lm = MomentumED.LinearMap(hmlt, subspaces[1], Float64);
+
+x = rand(ComplexF64, length(subspaces[1]));
+y = similar(x);
+@time hmlt_lm(y, x)
+
 
 plot_ed_spectrum("Ne1=$Ne1   Ne2=$Ne2")
 
@@ -162,6 +179,8 @@ using MomentumED: ED_HamiltonianMatrix_threaded
 @code_warntype ED_HamiltonianMatrix_threaded(subspaces[1], scat_list2_conserve, scat_list1_conserve);
 @time H = ED_HamiltonianMatrix_threaded(subspaces[1], scat_list2_conserve, scat_list1_conserve);
 
+@time z = H * x;
+maximum(abs.(z .- y))
 
 Base.summarysize(subspaces)
 Base.summarysize(subspaces)
