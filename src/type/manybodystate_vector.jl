@@ -70,7 +70,7 @@ length(space::HilbertSubspace) = length(space.list)
 
 function Base.show(io::IO, ::MIME"text/plain", space::HilbertSubspace{bits}) where {bits}
     println(io, "Hilbert subspace {dim = $bits}, dict = $(!isempty(space.dict))")
-    show(io, MIME"text/plain"(), space.list)
+    show(io, MIME("text/plain"), space.list)
 end
 
 function make_dict!(space::HilbertSubspace; index_type::Type = idtype(space))
