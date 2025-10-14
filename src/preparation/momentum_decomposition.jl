@@ -282,6 +282,11 @@ function ED_momentum_subspaces(para::EDPara, N_each_component::Union{Vector{Int6
         para, collect(N_each_component)
     )
 
+    empty_mask = length.(subspaces) .!= 0
+    subspaces = subspaces[empty_mask]
+    subspace_k1 = subspace_k1[empty_mask]
+    subspace_k2 = subspace_k2[empty_mask]
+
     if dict
         for i in eachindex(subspaces)
             make_dict!(subspaces[i]; index_type) 
