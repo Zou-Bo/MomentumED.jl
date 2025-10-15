@@ -2,23 +2,30 @@
 """
 This file provides:
 Iterators over MBS64 combinations of t electrons in n states (in one component) in sorted order;
-Iterators over multi-component MBS64 with given para and elenctron number of each component;
-Generating Hilbert subspaces distinguished by total momentum using the previous iterator.
+Recursive iteration function over multi-component MBS64 with given para and elenctron number of each component;
+Generating Hilbert subspaces distinguished by total momentum using the previous function.
 """
 
 using Combinatorics
 
-#The Combinations iterator in colex order (meaning sorted MBS64 list)
+"""
+The Combinations iterator in colex order (meaning sorted MBS64 list)
+
+```julia
+for mbs in ColexMBS64(7, 3)
+    println(mbs)
+end
+```
+"""
 struct ColexMBS64
     n::Int
     t::Int
 end
 
-# starting point
-@inline function Base.iterate(c::ColexMBS64)
+# Iteration
+@inline function Base.iterate(c::ColexMBS64) # starting point
     (MBS64(c.n, 1:c.t), [collect(1:c.t); c.n+1])
 end
-
 @inline function Base.iterate(c::ColexMBS64, s)
     if c.t == 0
         return
@@ -146,7 +153,7 @@ end
 
 
 
-function mbslist_recurusive_iteration!(subspaces::Vector{HilbertSubspace{bits}}, 
+function mbslist_recursive_iteration!(subspaces::Vector{HilbertSubspace{bits}}, 
     subspace_k1::Vector{Int64}, subspace_k2::Vector{Int64}, 
     para::EDPara, N_each_component::Vector{Int64}, 
     accumulated_mbs::MBS64 = reinterpret(MBS64{0}, 0), 
@@ -274,10 +281,8 @@ function ED_momentum_subspaces(para::EDPara, N_each_component::Union{Vector{Int6
     end
 
     bits = para.Nk * para.Nc
-    subspaces = [HilbertSubspace(MBS64{bits}[]; index_type) 
-        for _ in eachindex(subspace_k1)
-    ]
-    mbslist_recurusive_iteration!(
+    subspaces = [HilbertSubspace(MBS64{bits}[]; index_type) for _ in eachindex(subspace_k1)]
+    mbslist_recursive_iteration!(
         subspaces, subspace_k1, subspace_k2, 
         para, collect(N_each_component)
     )
