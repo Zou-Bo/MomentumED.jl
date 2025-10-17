@@ -301,7 +301,7 @@ module LLT
     end
 
     # ρ_{cf, ci}(q) = Σ_{ki,kf} < kf| e^{iqr} | ki > * c†_{kf, cf} c_{ki, ci}
-    function density_operator(q1::Int64, q2::Int64, cf::Int64, ci::Int64;
+    function density_operator(q1::Int64, q2::Int64, cf::Int64=1, ci::Int64=1;
         para::EDPara, form_factor::Bool)::MBOperator
         cp = para.V_int.components
         Gk = para.Gk
