@@ -1,0 +1,16 @@
+name = "MomentumEDCore"
+uuid = "67ba95b5-0c7c-4a9c-9737-2f4756a96b17"
+authors = ["Alice loves Bob <zou.bo.phys@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+
+[compat]
+julia = "1.11"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]

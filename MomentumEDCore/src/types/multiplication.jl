@@ -1,5 +1,6 @@
 using LinearAlgebra
 
+import Base.*
 """
     scat * (amp_in::ComplexF64, mbs_in::MBS64) -> (amp_out::ComplexF64, mbs_out::MBS64)
     scat * mbs_in::MBS64 = scat * (1.0, mbs_in)
@@ -78,13 +79,6 @@ function *(tuple_mbs_out::Tuple{ComplexF64, MBS64{bits}}, scat::Scatter{N})::Tup
     @inbounds amp_in, mbs_in = mbs_out * scat
     return amp_in * amp_out, mbs_in
 end
-
-# uses these to force precompile multiplications
-Scatter{1}(0.1, (1,), (2,)) * reinterpret(MBS64{3}, UInt(2))
-Scatter{2}(0.1, (1,2), (2,3)) * reinterpret(MBS64{3}, UInt(6))
-reinterpret(MBS64{3}, UInt(1)) * Scatter{1}(0.1, (1,), (2,))
-reinterpret(MBS64{3}, UInt(3)) * Scatter{2}(0.1, (1,2), (2,3))
-
 
 
 

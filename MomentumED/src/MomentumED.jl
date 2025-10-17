@@ -5,10 +5,26 @@ This module only sets sectors of total (crystal) momentum, also called blocks.
 """
 module MomentumED
 
-# type
+using MomentumEDCore
+using LinearAlgebra
+using SparseArrays
+using KrylovKit
+
+# types from MomentumEDCore
 export MBS64, HilbertSubspace, MBS64Vector, Scatter, MBOperator
-public get_bits, create_state_mapping, make_dict!, delete_dict!
-export ED_bracket, ED_bracket_threaded, multiplication_threaded
+public get_bits, get_body, make_dict!, delete_dict!
+public isphysical, isupper, isnormal, isnormalupper
+export ED_bracket, ED_bracket_threaded # , multiplication_threaded
+
+# Include utilities
+include("preparation/init_parameter.jl")
+include("preparation/momentum_decomposition.jl")
+include("preparation/scat_list.jl")
+include("method/sparse_matrix.jl")
+include("method/linear_map.jl")
+include("analysis/onebody_reduced_density_matrix.jl")
+include("analysis/entanglement_entropy.jl")
+include("analysis/manybody_connection.jl")
 
 # preparation
 public mbslist_onecomponent
@@ -17,7 +33,7 @@ export ED_sortedScatterList_onebody
 export ED_sortedScatterList_twobody
 
 # methods
-public ED_HamiltonianMatrix_threaded
+public ED_HamiltonianMatrix_threaded, LinearMap
 
 # main solving function
 export EDsolve
@@ -26,24 +42,6 @@ export EDsolve
 export ED_onebody_rdm
 # export ED_entanglement_entropy
 export ED_connection_step, ED_connection_gaugefixing!
-
-using LinearAlgebra
-using SparseArrays
-using KrylovKit
-
-
-# Include utilities
-include("type/manybodystate.jl")
-include("type/manybodystate_vector.jl")
-include("type/scattering.jl")
-include("type/scattering_operator.jl")
-include("type/operator_on_state.jl")
-include("preparation/init_parameter.jl")
-include("preparation/momentum_decomposition.jl")
-include("preparation/scat_list.jl")
-include("method/sparse_matrix.jl")
-include("method/linear_map.jl")
-
 
 
 
@@ -209,14 +207,6 @@ function EDsolve(subspace::HilbertSubspace{bits}, Hamiltonian::MBOperator;
     end
 
 end
-
-
-
-include("analysis/onebody_reduced_density_matrix.jl")
-include("analysis/entanglement_entropy.jl")
-include("analysis/manybody_connection.jl")
-
-
 
 
 

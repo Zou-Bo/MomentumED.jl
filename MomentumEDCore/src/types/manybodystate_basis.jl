@@ -1,5 +1,5 @@
 
-using Combinatorics
+# using Combinatorics
 
 """
     MBS64{bits} <: Integer
@@ -76,7 +76,7 @@ function isphysical(mbs::MBS64{bits})::Bool where{bits}
 end
 
 # Basic operations
-import Base: *, ==, hash
+import Base: *, ==, hash, isless
 
 """
     *(mbs1::MBS64{b1}, mbs2::MBS64{b2}) where {b1, b2}
