@@ -166,7 +166,7 @@ function mbslist_recursive_iteration!(subspaces::Vector{HilbertSubspace{bits}},
         for mbs_smaller in mbslist_onecomponent(para, N_each_component[end])
             print && println("generated mbs in the new component:\n$mbs_smaller")
             new_momentum = MBS_totalmomentum(para, mbs_smaller)
-            mbslist_recurusive_iteration!(subspaces, subspace_k1, subspace_k2, para, 
+            mbslist_recursive_iteration!(subspaces, subspace_k1, subspace_k2, para, 
                 N_each_component[begin:end-1],          # remaining components
                 accumulated_mbs * mbs_smaller,          # updated MBS64
                 accumulated_momentum .+ new_momentum    # updated momentum 

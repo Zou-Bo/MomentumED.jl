@@ -31,9 +31,7 @@ function ED_connection_gaugefixing!(ψ::Vector{<:MBS64Vector}, suggest_dims::Vec
     @assert length(suggest_dims) == length(ψ) "number of suggested vectors mismatches number of eigenvectors."
 
     matrix = [ ψ[j].vec[i] for i in suggest_dims, j in eachindex(ψ)]
-    println(matrix)
     x = det(matrix)
-    println(x)
     if abs(x) < warning_tol
         @warn "Gauge fixing may be unstable. Determinant of elements at position $suggest_dims has amplitude $(abs(x))."
     end

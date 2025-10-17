@@ -159,7 +159,7 @@ function EDsolve(subspace::HilbertSubspace{bits}, sorted_scat_lists::Vector{<: S
             end
 
             energies = vals[1:N]
-            vectors = [MBS64Vector(vecs[i], subspace) for i in 1:N] # Convert to vector of vectors
+            vectors = [MBS64Vector(vecs[:, i], subspace) for i in 1:N] # Convert to vector of vectors
 
         end
 
