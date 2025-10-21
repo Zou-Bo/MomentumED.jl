@@ -12,13 +12,13 @@ function *(scat::Scatter{N}, mbs_in::MBS64{bits})::Tuple{ComplexF64, MBS64{bits}
     
     @boundscheck @assert scat.in[1] <= bits && scat.out[1] <= bits "The scat operator change mbs bits beyond physical limit."
 
-    if isoccupied(mbs_in, scat.in...)
+    if isoccupied(mbs_in, scat.in)
         if scat.in == scat.out
             return scat.Amp, mbs_in
         else
-            mbs_mid = empty!(mbs_in, scat.in...; check = false)
-            if isempty(mbs_mid, scat.out...)
-                mbs_out = occupy!(mbs_mid, scat.out...; check = false)
+            mbs_mid = empty!(mbs_in, scat.in; check = false)
+            if isempty(mbs_mid, scat.out)
+                mbs_out = occupy!(mbs_mid, scat.out; check = false)
                 amp = scat.Amp
                 if isodd(scat_occ_number(mbs_mid, scat.in) + scat_occ_number(mbs_mid, scat.out))
                     amp = -amp
@@ -52,13 +52,13 @@ function *(mbs_out::MBS64{bits}, scat::Scatter{N})::Tuple{ComplexF64, MBS64{bits
     
     @boundscheck @assert scat.in[1] <= bits && scat.out[1] <= bits "The scat operator change mbs bits beyond physical limit."
 
-    if isoccupied(mbs_out, scat.out...)
+    if isoccupied(mbs_out, scat.out)
         if scat.in == scat.out
             return scat.Amp, mbs_out
         else
-            mbs_mid = empty!(mbs_out, scat.out...; check = false)
-            if isempty(mbs_mid, scat.in...)
-                mbs_in = occupy!(mbs_mid, scat.in...; check = false)
+            mbs_mid = empty!(mbs_out, scat.out; check = false)
+            if isempty(mbs_mid, scat.in)
+                mbs_in = occupy!(mbs_mid, scat.in; check = false)
                 amp = scat.Amp
                 if isodd(scat_occ_number(mbs_mid, scat.in) + scat_occ_number(mbs_mid, scat.out))
                     amp = -amp
