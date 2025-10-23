@@ -4,16 +4,37 @@ module LLT
     using ClassicalOrthogonalPolynomials: laguerrel
     using QuadGK
 
-    export ComponentList, LandauInteraction
+    export ReciprocalLattice, ComponentList, LandauInteraction
     export Landau_ff_inf, density_operator
 
+    # Global variables, usually no need to change
     const W0::Float64 = 1.0                     # Interaction strength (energy unit)
-    const Gl::Float64 = sqrt(2π/sqrt(0.75))     # Magnetic length scale from Brillouin zone area
+    const l::Float64 = 1.0                      # Magnetic Length (length/momentum unit)
+    const Nshell::Int64 = 3                     # number of shells includes in the interaction computation
 
-    # global variable: number of shells includes in the form factor computation
-    Nshell::Int64 = 3           
 
-    # a list of component (layer, level, Chern number)
+    struct ReciprocalLattice
+        G1::ComplexF64
+        G2::ComplexF64
+        function ReciprocalLattice(G2_ratio_G1::ComplexF64; G1phase::Float64 = 0.0)
+            # G1 * G2 * sin(angle(G2_ratio_G1)) = G1^2 * abs(G2_ratio_G1) * sin(angle(G2_ratio_G1)) = 2π/l^2
+            G1 = sqrt( 2π/l^2 / abs(G2_ratio_G1) / sin(angle(G2_ratio_G1))) * cis(G1phase)
+            G2 = G1 * G2_ratio_G1
+            new(G1, G2)
+        end
+    end
+    function ReciprocalLattice(s::Symbol)
+        if s == :square
+            return ReciprocalLattice(1.0im)
+        elseif s == :triangular
+            return ReciprocalLattice(cispi(2//3))
+        else
+            throw(AssertionError("Symbol construction can only be :square or :triangular, use ratio construction instead."))
+        end
+    end
+
+
+    # a list of component (layer, level, Chern number, other/pseudospin)
     # layer can only be 1 or 2; Chern number can only be 1 or -1
     struct ComponentList
         
@@ -56,41 +77,32 @@ module LLT
 
 
 
-    # Shift a momentum to the hexagonal Brillouin zone (120 degree from G1 to G2)
-    function BZ(k::Tuple{<: Real, <: Real})::Tuple{<: Real, <: Real}
-        k1 = rem(k[1], 2, RoundNearest)
-        k2 = rem(k[2], 2, RoundNearest)
+    # Shift a momentum to the Brillouin zone
+    function BZ(k::Tuple{<: Real, <: Real}, lattice::ReciprocalLattice)::Tuple{<: Real, <: Real}
+        k1 = rem(k[1], 1, RoundNearest)
+        k2 = rem(k[2], 1, RoundNearest)
 
-        # 1. -1 <= 2k1 - k2 < 1
-        if 2k1 - k2 < -1
-            k1 += 1
-        elseif 2k1 - k2 >= 1
-            k1 -= 1
+        dot_product = (abs2(lattice.G1), real(lattice.G1 * conj(lattice.G2)), abs2(lattice.G2))
+
+        @inline function in_BZ(k1, k2, G1, G2)
+            G² = G1^2 * dot_product[1] + 2G1*G2 * dot_product[2] + G2^2 * dot_product[3]
+            kdotG = k1*G1 * dot_product[1] + (k1*G2+k2*G1) * dot_product[2] + k2*G2 * dot_product[3]
+            return -0.5G² <= kdotG < 0.5G²
         end
 
-        # 2. -1 < k1 - 2k2 <= 1
-        if k1 - 2k2 <= -1
-            k2 -= 1
-        elseif k1 - 2k2 > 1
-            k2 += 1
-        end
+        for g1 in -1:1, g2 in -1:1
+            kk1 = k1 + g1
+            kk2 = k2 + g2
 
-        # redo step 1
-        if 2k1 - k2 < -1
-            k1 += 1
-        elseif 2k1 - k2 >= 1
-            k1 -= 1
-        end
+            abs(kk1) <= 1 &&
+            abs(kk2) <= 1 &&
+            in_BZ(kk1, kk2, 1, -1) && 
+            in_BZ(kk1, kk2, 1, 0) &&
+            in_BZ(kk1, kk2, 1, 1) &&
+            in_BZ(kk1, kk2, 0, 1) && return (kk1, kk2)
 
-        # 3. -1 <= k1 + k2 < 1
-        if k1 + k2 < -1
-            k1 += 1
-            k2 += 1
-        elseif k1 + k2 >= 1
-            k1 -= 1
-            k2 -= 1
         end
-        return k1, k2
+        error("Brillouin Zone fail.")
     end
 
 
@@ -184,8 +196,10 @@ module LLT
     # Callable structure to compute Two-body interaction matrix element
     # This implements the full Coulomb interaction with proper magnetic translation phases
     # The interaction is computed in momentum space with Landau level projection
-    # Momentum inputs are Tuple(Float64, Float64) representing (k1, k2) in ratio of Gk
+    # Momentum inputs are Tuple{Float64, Float64} representing (k1, k2) in ratio of Gk
     mutable struct LandauInteraction <: Function
+
+        const lattice::ReciprocalLattice                  # {G1, G2}
 
         D_l::Float64                                # Gate distance / magnetic length (D/l)
         d_l::Float64                                # Interlayer distance / magnetic length (d/l)
@@ -195,14 +209,13 @@ module LLT
 
         const components::ComponentList
 
-        function LandauInteraction( 
+        function LandauInteraction(lattice::ReciprocalLattice,
             components::Tuple{Int64, Int64, Int64, Int64}...
         )
-            new(10.0, 1.0, [0.0; 0.7;], [1.5; 0.0;], 0.5, ComponentList(components...))
+            new(lattice, 10.0, 0.0, [0.0; 0.7;], [1.5; 0.0;], 0.0, ComponentList(components...))
         end
 
     end
-    LandauInteraction() = LandauInteraction((1,0,1,0));
 
 
 
@@ -234,22 +247,22 @@ module LLT
         end
 
         # Calculate momentum transfer (modulo reciprocal lattice)
-        q = BZ(ki1 .- kf1)
+        q = BZ(ki1 .- kf1, V_int.lattice)
         G_shift1 = round.(Int64, ki1 .- kf1 .- q, RoundNearest)
         G_shift2 = round.(Int64, kf2 .- ki2 .- q, RoundNearest)
 
         V_total = ComplexF64(0.0)
         # Sum over reciprocal lattice vectors for convergence
         for g1 in -Nshell:Nshell, g2 in -Nshell:Nshell
-            if abs(g1-g2) > Nshell
+            if abs2(g1 * V_int.lattice.G1 + g2 * V_int.lattice.G2) > Nshell
                 continue
             end
 
             # Construct the full momentum transfer including reciprocal lattice
             qq1 = q[1] + g1
             qq2 = q[2] + g2
-            ql::ComplexF64 = Gl * (qq1 + qq2 * cispi(2//3))
-
+            ql::ComplexF64 = qq1 * V_int.lattice.G1 + qq2 * V_int.lattice.G2
+            
             # mixed Coulomb and Haldane interaction
             V  = V_int.mix * V_Haldane(abs(ql); same_layer = (li1==li2), V_intra = V_int.V_intra, V_inter = V_int.V_inter)
             V += (1-V_int.mix) * V_Coulomb(abs(ql); same_layer = (li1==li2), d_l = V_int.d_l, D_l = V_int.D_l) 
@@ -286,6 +299,8 @@ module LLT
         end
     end
 
+
+
     using MomentumED
 
     function momentum_index_search(k1::Int64, k2::Int64; para::EDPara)::Int64
@@ -314,7 +329,7 @@ module LLT
         @assert Gk[1] > 0 && Gk[2] > 0
 
         q_coord = (q1 // Gk[1], q2 // Gk[2])
-        ql = (q_coord[1] * 1.0 + q_coord[2] * cispi(2//3)) * Gl
+        ql = q_coord[1] * para.V_int.lattice.G1 + q_coord[2] * para.V_int.lattice.G2
         C = cp.Chern[ci]
         F = complex(1.0)
         if form_factor

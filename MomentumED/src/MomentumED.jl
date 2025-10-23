@@ -23,7 +23,8 @@ include("preparation/scat_list.jl")
 include("method/sparse_matrix.jl")
 include("method/linear_map.jl")
 include("analysis/onebody_reduced_density_matrix.jl")
-include("analysis/entanglement_entropy.jl")
+include("analysis/orbital_reduced_density_matrix.jl")
+# include("analysis/entanglement_entropy.jl")
 include("analysis/manybody_connection.jl")
 
 # preparation
@@ -38,10 +39,16 @@ public ED_HamiltonianMatrix_threaded, LinearMap
 # main solving function
 export EDsolve
 
-# analysis
-export ED_onebody_rdm
-# export ED_entanglement_entropy
+# analysis - reduced density matrix
+export RDM_OneBody
+export RDM_NumberBlocks, RDM_MomentumCoefficients
+
+# analysis - many-body connection
 export ED_connection_step, ED_connection_gaugefixing!
+
+# environment variables
+public PRINT_RECURSIVE_MOMENTUM_DIVISION
+public PRINT_TWOBODY_SCATTER_PAIRS
 
 
 

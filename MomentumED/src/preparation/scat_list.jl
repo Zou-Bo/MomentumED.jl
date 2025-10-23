@@ -100,6 +100,8 @@ function group_momentum_pairs(para::EDPara)
     return momentum_groups
 end
 
+global PRINT_TWOBODY_SCATTER_PAIRS::Bool = false
+
 """
     scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para::EDPara;
                    kshift::Tuple{Float64, Float64} = (0.0, 0.0), output::Bool = false) -> Vector{Scatter{2}}
@@ -117,7 +119,6 @@ that conserve total momentum, including all component index combinations.
 
 # Keywords
 - `kshift::Tuple{Float64, Float64}=(0.0, 0.0)`: Momentum shift for twisted boundary conditions
-- `output::Bool=false`: Print all the Scatter terms (before normal ordering) for debugging purposes
 
 # Returns
 - `Vector{Scatter{2}}`: List of two-body Scatter terms for this momentum group
@@ -147,7 +148,7 @@ Scatter_terms = scat_pair_group(zero_momentum_pairs, para)
 ```
 """
 function scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para::EDPara;
-    kshift::Tuple{Float64, Float64} = (0.0, 0.0), output::Bool = false)::Vector{Scatter{2}}
+    kshift::Tuple{Float64, Float64} = (0.0, 0.0))::Vector{Scatter{2}}
     
     Nc = para.Nc
     Nk = para.Nk
@@ -164,8 +165,8 @@ function scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para
     Scatter_list = Vector{Scatter{2}}()
     # Iterate over all input and output pairs
     for (ki1, ki2) in pair_group, (kf1, kf2) in pair_group
-        output && println()
-        output && println("ki1, ki2, kf1, kf2 = ($ki1, $ki2), ($kf1, $kf2)")
+        PRINT_TWOBODY_SCATTER_PAIRS && println()
+        PRINT_TWOBODY_SCATTER_PAIRS && println("ki1, ki2, kf1, kf2 = ($ki1, $ki2), ($kf1, $kf2)")
         # Generate all component index combinations
         for ci1 in 1:Nc, ci2 in 1:Nc, cf1 in 1:Nc, cf2 in 1:Nc
             
@@ -193,7 +194,7 @@ function scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para
             if minmax(i1, i2) >= minmax(f1, f2)
 
                 # Calculate the direct and exchange amplitudes
-                output && print(fldmod1(i1, Nk), fldmod1(i2, Nk), fldmod1(f1, Nk), fldmod1(f2, Nk),"        ")
+                PRINT_TWOBODY_SCATTER_PAIRS && print(fldmod1(i1, Nk), fldmod1(i2, Nk), fldmod1(f1, Nk), fldmod1(f2, Nk),"        ")
                 amp_direct = para.V_int(
                     (frac_klist[1, kf1], frac_klist[2, kf1]),
                     (frac_klist[1, kf2], frac_klist[2, kf2]),
@@ -203,7 +204,7 @@ function scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para
                 )
 
                 # exchange i1 and i2
-                output && print(fldmod1(i2, Nk), fldmod1(i1, Nk), fldmod1(f1, Nk), fldmod1(f2, Nk))
+                PRINT_TWOBODY_SCATTER_PAIRS && print(fldmod1(i2, Nk), fldmod1(i1, Nk), fldmod1(f1, Nk), fldmod1(f2, Nk))
                 amp_exchange = para.V_int(
                     (frac_klist[1, kf1], frac_klist[2, kf1]),
                     (frac_klist[1, kf2], frac_klist[2, kf2]),
@@ -214,7 +215,7 @@ function scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para
 
                 amp = (amp_direct - amp_exchange) / sys_size
                 iszero(amp) || push!(Scatter_list, NormalScatter(amp, f1, f2, i2, i1; upper_hermitian = true))
-                output && println()
+                PRINT_TWOBODY_SCATTER_PAIRS && println()
             end
         
         end

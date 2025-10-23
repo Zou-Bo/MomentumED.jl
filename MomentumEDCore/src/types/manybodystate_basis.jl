@@ -27,13 +27,8 @@ struct MBS64{bits}
     n::UInt64
     
     function MBS64{bits}(state::UInt64) where {bits}
-        @assert bits isa Integer && 0 <= bits <= 64 "The number of bits must be an integer between 1 and 64."
-        if bits < 64
-            @assert state < (UInt64(1) << bits) "State representation out of range for given bits"
-        else
-            # For 64 bits, any UInt64 value is valid
-            @assert state <= typemax(UInt64) "State representation out of range for given bits"
-        end
+        @assert bits isa Integer && 0 <= bits <= 64 "The number of bits must be an integer between 0 and 64."
+        @assert state <= (UInt64(1) << bits - UInt64(1)) "State representation out of range for given bits"
         new{bits}(state)
     end
 end
@@ -76,16 +71,28 @@ function isphysical(mbs::MBS64{bits})::Bool where{bits}
 end
 
 # Basic operations
-import Base: *, ==, hash, isless
+import Base: *, +, ==, hash, isless
 
 """
     *(mbs1::MBS64{b1}, mbs2::MBS64{b2}) where {b1, b2}
 
-Concatenate two MBS64 states by shifting the first state and ORing with the second.
+Combine(concatenate) two MBS64 states from two orthogonal Hilbert spaces.
+The first state accounts smaller bit positions and the second greater positions.
 Used for combining states from different components.
 """
 function *(mbs1::MBS64{b1}, mbs2::MBS64{b2}) where {b1, b2}
     MBS64{b1+b2}(mbs1.n << b2 | mbs2.n)
+end
+
+"""
+    +(mbs1::MBS64{b}, mbs2::MBS64{b}) where {b}
+
+Combine(plus) two MBS64 states in the same(combined) Hilbert space with mbs1.n | mbs2.n.
+Used for combining states generated with complete masks.
+Repeated occupations on the same bit, if exist, count once.
+"""
+function +(mbs1::MBS64{b}, mbs2::MBS64{b}) where {b}
+    MBS64{b}(mbs1.n | mbs2.n)
 end
 
 """
@@ -122,56 +129,60 @@ function occ_list(mbs::MBS64{bits}) where {bits}
 end
 
 """
-    MBS64(bits, occ_list[, mask])
-
-Construct an MBS64 from a iteratable list of occupied orbital. 
-
-If a mask is specified, occ_list refers to the bits in the mask.
-"""
-function MBS64(bits, occ_list)
-    state = UInt64(0)
-    for i in occ_list
-        @boundscheck @assert 1 <= i <= bits "Occupied state index out of bounds"
-        state |= UInt64(1) << (i - 1)
-    end
-    return MBS64{bits}(state)
-end
-function MBS64(bits, occ_list, mask)
-    state = UInt64(0)
-    for x in occ_list
-        i = mask[x]
-        @boundscheck @assert 1 <= i <= bits "Occupied state index out of bounds"
-        state |= UInt64(1) << (i - 1)
-    end
-    return MBS64{bits}(state)
-end
-
-"""
     make_mask64(occ_list::Vector{Int64})::UInt64
-    make_mask64(occ_list::Tuple{Vararg{Int64}})::UInt64
+    make_mask64(occ_list)::UInt64 = make_mask64(collect(occ_list))
     make_mask64(occ_list::Tuple{Int64})::UInt64
     make_mask64(occ_list::Tuple{Int64, Int64})::UInt64
 
 Create mask with ones on the assigned bit positions.
+Bit positions should be >= 1 and <= 64.
+Repeating positions only take effect once.
 
 Optimized for one and two occupations.
 """
 function make_mask64(occ_list::Vector{Int64})::UInt64
-    @assert length(occ_list) >= 3
     mask = UInt64(0)
     for i in occ_list
+        @assert 1 <= i <= 64
         mask |= UInt64(1) << (i - 1)
     end
     return mask
 end
-@inline function make_mask64(occ_list::Tuple{Vararg{Int64}})::UInt64 
+@inline function make_mask64(occ_list)::UInt64 
+    @assert typeof(occ_list) != Tuple{Int64}
+    @assert typeof(occ_list) != Tuple{Int64, Int64}
     make_mask64(collect(occ_list))
 end
 function make_mask64(occ_list::Tuple{Int64})::UInt64
+    @assert 1 <= occ_list[1] <= 64
     return UInt64(1) << (occ_list[1] - 1)
 end
 function make_mask64(occ_list::Tuple{Int64, Int64})::UInt64
+    @assert 1 <= occ_list[1] <= 64
+    @assert 1 <= occ_list[2] <= 64
     return UInt64(1) << (occ_list[1] - 1) | UInt64(1) << (occ_list[2] - 1)
+end
+
+"""
+    MBS64(bits, occ_list[, mask])
+
+Construct an MBS64 from a iteratable list of occupied orbital. 
+No repetition allowed.
+
+If a mask is specified, occ_list refers to the positions in the mask.
+"""
+function MBS64(bits, occ_list)
+    sort!(occ_list)
+    @assert allunique(occ_list)
+    MBS64{bits}(make_mask64(occ_list))
+end
+MBS64(bits, occ_list, mask) = MBS64(bits, mask[occ_list])
+
+"""
+    Input a MBS64{bits} mask; return its complete mask.
+"""
+function MBS64_complete(mask::MBS64{bits})::MBS64{bits} where {bits}
+    MBS64{bits}(UInt64(1) << bits -1 - mask.n)
 end
 
 """
@@ -314,8 +325,6 @@ function scat_occ_number(mbs::MBS64{bits}, i_list::Vector{Int64})::Int64 where {
         return 0
     end
 
-    @assert N >= 3
-
     @boundscheck @assert 1 <= i_list[1] && i_list[end] <= bits "Invalid bit positions"
 
     mask = zero(UInt64)
@@ -332,6 +341,8 @@ function scat_occ_number(mbs::MBS64{bits}, i_list::Vector{Int64})::Int64 where {
 
 end
 @inline function scat_occ_number(mbs::MBS64{bits}, i_list::Tuple{Vararg{Int64}})::Int64 where {bits}
+    @assert typeof(i_list) != Tuple{Int64}
+    @assert typeof(i_list) != Tuple{Int64, Int64}
     scat_occ_number(mbs, collect(i_list))
 end
 function scat_occ_number(mbs::MBS64{bits}, i_list::Tuple{Int64})::Int64 where {bits}

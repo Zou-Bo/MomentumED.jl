@@ -92,7 +92,7 @@ function NormalScatter(V::ComplexF64, ij::Int64...; upper_hermitian::Bool = fals
 
     # no repetition
     if reduce(|, [diff(i_sorted); diff(j_sorted)] .== 0; init = false)
-        return Scatter{N}(0.0, tuple(i_sorted), tuple(j_sorted))
+        return Scatter{N}(0.0, i_sorted, j_sorted)
     end
     if isodd(parity(i_sort) + parity(j_sort))
         V = -V
@@ -107,7 +107,7 @@ function NormalScatter(V::ComplexF64, ij::Int64...; upper_hermitian::Bool = fals
         end
     end
 
-    return Scatter{N}(V, tuple(i_sorted), tuple(j_sorted))
+    return Scatter{N}(V, i_sorted, j_sorted)
 end
 function NormalScatter(V::ComplexF64, i::Int64, j::Int64; upper_hermitian::Bool = false)::Scatter{1}
     # N = 1
