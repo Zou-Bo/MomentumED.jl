@@ -1,5 +1,8 @@
-"Parameters and functions for Landau levels with torus geometry and periodic boundary condition"
-module LLT
+"""
+Parameters and functions for Landau levels with disk geometry and open boundary condition.
+Using angular momentum representation -> fake "momentum" = (m, 0), Gk = (0, 0)
+"""
+module LLD
 
     using ClassicalOrthogonalPolynomials: laguerrel
     using QuadGK

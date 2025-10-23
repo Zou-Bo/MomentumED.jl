@@ -148,18 +148,29 @@ Scatter_terms = scat_pair_group(zero_momentum_pairs, para)
 ```
 """
 function scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para::EDPara;
-    kshift::Tuple{Float64, Float64} = (0.0, 0.0))::Vector{Scatter{2}}
+    shifts::Vector{Tuple{Float64, Float64}})::Vector{Scatter{2}}
     
+    # @assert length(shifts) == para.Nc_conserve
+
     Nc = para.Nc
     Nk = para.Nk
     Gk1, Gk2 = para.Gk
-    frac_klist = float(para.k_list) .+ [kshift[1]; kshift[2]]  # apply kshift
+    klist = float(para.k_list) #.+ [kshift[1]; kshift[2]]  # apply kshift
+
+    kshift = zeros(Float64, 2, para.Nc_conserve)
+    for i in size(kshift, 2)
+        kshift[1, i] = shifts[i][1]
+        kshift[2, i] = shifts[i][2]
+    end
+
     sys_size = (Gk1 != 0 && Gk2 != 0) ? Nk : 1
     if Gk1 != 0
-        frac_klist[1, :] ./= Gk1
+        klist[1, :] ./= Gk1
+        kshift[1, :] ./= Gk1
     end
     if Gk2 != 0
-        frac_klist[2, :] ./= Gk2
+        klist[2, :] ./= Gk2
+        kshift[2, :] ./= Gk2
     end
 
     Scatter_list = Vector{Scatter{2}}()
@@ -190,26 +201,26 @@ function scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para
                 continue
             end
 
-            # inverse Scatter only need to count onece, as the Hamiltonian is generated with upper half Hermitian()
+            # conjugate Scatter only need to count onece, as the Hamiltonian is generated with upper half Hermitian()
             if minmax(i1, i2) >= minmax(f1, f2)
 
                 # Calculate the direct and exchange amplitudes
                 PRINT_TWOBODY_SCATTER_PAIRS && print(fldmod1(i1, Nk), fldmod1(i2, Nk), fldmod1(f1, Nk), fldmod1(f2, Nk),"        ")
                 amp_direct = para.V_int(
-                    (frac_klist[1, kf1], frac_klist[2, kf1]),
-                    (frac_klist[1, kf2], frac_klist[2, kf2]),
-                    (frac_klist[1, ki2], frac_klist[2, ki2]),
-                    (frac_klist[1, ki1], frac_klist[2, ki1]),
+                    (klist[1, kf1] + kshift[1, cf1], klist[2, kf1] + kshift[2, cf1]),
+                    (klist[1, kf2] + kshift[1, cf2], klist[2, kf2] + kshift[2, cf2]),
+                    (klist[1, ki2] + kshift[1, ci2], klist[2, ki2] + kshift[2, ci2]),
+                    (klist[1, ki1] + kshift[1, ci1], klist[2, ki1] + kshift[2, ci1]),
                     cf1, cf2, ci2, ci1
                 )
 
                 # exchange i1 and i2
                 PRINT_TWOBODY_SCATTER_PAIRS && print(fldmod1(i2, Nk), fldmod1(i1, Nk), fldmod1(f1, Nk), fldmod1(f2, Nk))
                 amp_exchange = para.V_int(
-                    (frac_klist[1, kf1], frac_klist[2, kf1]),
-                    (frac_klist[1, kf2], frac_klist[2, kf2]),
-                    (frac_klist[1, ki1], frac_klist[2, ki1]),
-                    (frac_klist[1, ki2], frac_klist[2, ki2]),
+                    (klist[1, kf1] + kshift[1, cf1], klist[2, kf1] + kshift[2, cf1]),
+                    (klist[1, kf2] + kshift[1, cf2], klist[2, kf2] + kshift[2, cf2]),
+                    (klist[1, ki1] + kshift[1, ci1], klist[2, ki1] + kshift[2, ci1]),
+                    (klist[1, ki2] + kshift[1, ci2], klist[2, ki2] + kshift[2, ci2]),
                     cf1, cf2, ci1, ci2
                 )
 
@@ -348,7 +359,7 @@ If the momentum index is used, no input of momentum shift for twisted boundary c
 - `para::EDPara`: Parameter structure containing system configuration
 
 # Keywords
-- `kshift::Tuple{Float64, Float64}=(0.0, 0.0)`: Momentum shift for twisted boundary conditions
+- `kshift=nothing`: Momentum shift for twisted boundary conditions
 
 # Returns
 - `Vector{Scatter{2}}`: Sorted list of two-body Scatter terms
@@ -371,18 +382,30 @@ Scatter2_shifted = ED_sortedScatterList_twobody(para; kshift=(0.1, 0.1))
 ```
 """
 function ED_sortedScatterList_twobody(para::EDPara; 
-    kshift::Tuple{Float64, Float64} = (0.0, 0.0))::Vector{Scatter{2}}
+    kshift = nothing)::Vector{Scatter{2}}
 
     momentum_groups = group_momentum_pairs(para)
     
     sct_list2 = Vector{Scatter{2}}()
     if para.momentum_coordinate
+
+        if isnothing(kshift)
+            shifts = fill((0.0, 0.0), para.Nc_conserve)
+        elseif kshift isa Tuple{Float64, Float64}
+            shifts = fill(kshift, para.Nc_conserve)
+        elseif kshift isa Vector{Tuple{Float64, Float64}}
+            @assert length(kshift) == para.Nc_conserve "length(kshift) isn't equal to para.Nc_conserve."
+            shifts = kshift
+        else
+            throw(AssertionError("kshift could be nothing, Tuple{Float64, Float64}, or Vector{Tuple{Float64, Float64}}."))
+        end
+
         for (K_total, pairs) in momentum_groups
-            append!(sct_list2, scat_pair_group_coordinate(pairs, para; kshift=kshift))
+            append!(sct_list2, scat_pair_group_coordinate(pairs, para; shifts=shifts))
         end
     else
-        if kshift != (0.0, 0.0)
-            @warn "kshift is ignored when para.V_int accepts momentum indices."
+        if !isnothing(kshift)
+            @warn "kshift is ignored when para.V_int accepts momentum indices instead of coordinates."
         end
 
         for (K_total, pairs) in momentum_groups
