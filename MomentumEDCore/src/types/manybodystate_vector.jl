@@ -33,16 +33,16 @@ size(mbs_vec::MBS64Vector) = (length(mbs_vec.vec), )
 function similar(mbs_vec::MBS64Vector{bits, F})::MBS64Vector{bits, F} where {bits, F <: AbstractFloat}
     @inbounds return MBS64Vector(similar(mbs_vec.vec), mbs_vec.space)
 end
-function Base.copy!(mbs_to::MBS64Vector{bits, F}, mbs_from::MBS64Vector{bits, F}) where {bits, F <: AbstractFloat}
-    @assert mbs_to.space == mbs_from.space "mbs vectors are not in the same subspace."
-    mbs_to.vec .= mbs_from.vec
-    return nothing
-end
-function Base.copy(mbs_from::MBS64Vector{bits, F}) where {bits, F <: AbstractFloat}
-    mbs_to = similar(mbs_from)
-    mbs_to.vec .= mbs_from.vec
-    return mbs_to
-end
+# function Base.copy!(mbs_to::MBS64Vector{bits, F}, mbs_from::MBS64Vector{bits, F}) where {bits, F <: AbstractFloat}
+#     @assert mbs_to.space == mbs_from.space "mbs vectors are not in the same subspace."
+#     mbs_to.vec .= mbs_from.vec
+#     return nothing
+# end
+# function Base.copy(mbs_from::MBS64Vector{bits, F}) where {bits, F <: AbstractFloat}
+#     mbs_to = similar(mbs_from)
+#     mbs_to.vec .= mbs_from.vec
+#     return mbs_to
+# end
 function dot(mbs_bra::MBS64Vector{bits, F}, mbs_ket::MBS64Vector{bits, F})::Complex{F} where {bits, F <: AbstractFloat}
     @boundscheck @assert mbs_bra.space == mbs_ket.space "mbs vectors are not in the same subspace."
     return dot(mbs_bra.vec, mbs_ket.vec)
