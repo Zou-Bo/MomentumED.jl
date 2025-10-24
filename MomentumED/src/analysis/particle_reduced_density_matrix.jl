@@ -1,4 +1,4 @@
-function RDM_OneBody(ψ::MBS64Vector{bits, F}) where{bits, F <: AbstractFloat}
+function PES_1rdm(ψ::MBS64Vector{bits, F}) where{bits, F <: AbstractFloat}
     rdm = zeros(Complex{F}, bits, bits)
     for i in 1:bits, j in 1:bits
         if i <= j
@@ -23,4 +23,18 @@ function RDM_OneBody(ψ::MBS64Vector{bits, F}) where{bits, F <: AbstractFloat}
         end
     end
     return rdm
+end
+
+function PES_MomtBlocks(para, Ne_in_A, Ne)
+    subspacesA = HilbertSubspace{bits}[]
+    subspacesB = HilbertSubspace{bits}[]
+    momentumA = Tuple{Int64, Int64}[]
+    momentumB = Tuple{Int64, Int64}[]
+
+    return subspacesA, subspacesB, momentumA, momentumB
+end
+
+function PES_MomtBlock_coefficients()
+    @info "Coefficient matrix is not encouraged. Try generate the density matrix directly."
+
 end

@@ -10,27 +10,31 @@ module LLT
     # Global variables, usually no need to change
     const W0::Float64 = 1.0                     # Interaction strength (energy unit)
     const l::Float64 = 1.0                      # Magnetic Length (length/momentum unit)
-    Nshell::Float64 = 8.0                       # number of shells included in the interaction computation (|G| <= Nshell)
+    shell_cutoff::Float64 = 20.0                 # number of shells (|Gl| <= shell_cutoff) included in the interaction 
 
 
     struct ReciprocalLattice
         G1::ComplexF64
         G2::ComplexF64
-        exact_ratio::Real
-        exact_angle_in_pi::Real
+        exact_G2²_G1²::Real              # exact abs2(G2) / abs2(G1)
+        exact_G1dotG2_G1²::Real          # exact G1 ⋅ G2 / abs2(G1)
 
-        function ReciprocalLattice(G2_ratio_G1::Real, angle_in_pi::Real; G1phase_in_pi::Real = 0.0)
+        function ReciprocalLattice(G2_ratio_G1::Real, cos_angle::Real; G1phase_in_pi::Real = 0.0)
+            sin_square = 1.0 - cos_angle^2
+            @assert sin_square > 0.0 "abs(cosθ) should < 1.0"
+            sin_angle = sqrt(sin_square)
+            
             # G1 * G2 * sin(angle) = G1^2 * abs(ratio) * sin(angle) = 2π/l^2
-            G1 = sqrt( 2π/l^2 / abs(G2_ratio_G1) / sinpi(angle_in_pi)) * cispi(G1phase_in_pi)
-            G2 = G1 * G2_ratio_G1 * cispi(angle_in_pi)
-            new(G1, G2, G2_ratio_G1, angle_in_pi)
+            G1 = sqrt( 2π/l^2 / abs(G2_ratio_G1) / sin_angle ) * cispi(G1phase_in_pi)
+            G2 = G1 * G2_ratio_G1 * (cos_angle + sin_angle*im)
+            new(G1, G2, G2_ratio_G1^2, G2_ratio_G1*cos_angle)
         end
     end
     function ReciprocalLattice(s::Symbol)
         if s == :square
-            return ReciprocalLattice(1, 1//2)
+            return ReciprocalLattice(1, 0)
         elseif s == :triangular
-            return ReciprocalLattice(1, 2//3)
+            return ReciprocalLattice(1, -1//2)
         else
             throw(AssertionError("Symbol construction is for :square or :triangular, use ratio-angle construction instead."))
         end
@@ -78,32 +82,35 @@ module LLT
         end
     end
 
-
+    
 
     # Shift a momentum to the Brillouin zone
-    function BZ(k::Tuple{<: Real, <: Real}, lattice::ReciprocalLattice)::Tuple{<: Real, <: Real}
+    function BZ(k::Tuple{<: Real, <: Real}, lattice::ReciprocalLattice;
+        # output = false
+        )::Tuple{<: Real, <: Real}
         k1 = rem(k[1], 1, RoundDown)
         k2 = rem(k[2], 1, RoundDown)
 
-        dot_product = (1, lattice.exact_ratio * cispi(lattice.exact_angle_in_pi), lattice.exact_ratio^2)
+        kdotG1 = k1 + k2 * lattice.exact_G1dotG2_G1²
+        kdotG2 = k1 * lattice.exact_G1dotG2_G1² + k2 * lattice.exact_G2²_G1²
+        distance00 = k1^2 + 2k1*k2 * lattice.exact_G1dotG2_G1² + k2^2 * lattice.exact_G2²_G1²
+        distance01 = distance00 - 2kdotG2 + lattice.exact_G2²_G1²
+        distance10 = distance00 - 2kdotG1 + 1
+        distance11 = distance00 - 2kdotG1 - 2kdotG2 + 1 + 2lattice.exact_G1dotG2_G1² + lattice.exact_G2²_G1²
 
-        @inline function in_BZ(k1, k2, G1, G2)
-            G² = G1^2 * dot_product[1] + 2G1*G2 * dot_product[2] + G2^2 * dot_product[3]
-            kdotG = k1*G1 * dot_product[1] + (k1*G2+k2*G1) * dot_product[2] + k2*G2 * dot_product[3]
-            return -0.5G² <= kdotG < 0.5G²
+        # if output
+        #     println((k1, k2), [distance11, distance10, distance01, distance00])
+        # end
+
+        if distance11 <= distance10 && distance11 <= distance01 && distance11 <= distance00
+            return (k1-1, k2-1)
+        elseif distance10 <= distance01 && distance10 <= distance00
+            return (k1-1, k2)
+        elseif distance01 <= distance00
+            return (k1, k2-1)
+        else
+            return (k1, k2)
         end
-
-        for g1 in -1:0, g2 in -1:0
-            kk1 = k1 + g1
-            kk2 = k2 + g2
-
-            in_BZ(kk1, kk2, 1, -1) && 
-            in_BZ(kk1, kk2, 1, 0) &&
-            in_BZ(kk1, kk2, 1, 1) &&
-            in_BZ(kk1, kk2, 0, 1) && return (kk1, kk2)
-
-        end
-        error("Brillouin Zone fail.")
     end
 
 
@@ -254,8 +261,10 @@ module LLT
 
         V_total = ComplexF64(0.0)
         # Sum over reciprocal lattice vectors for convergence
+        Nshell = round(Int64, shell_cutoff, RoundUp)
+        # println("Nshell=$Nshell, q=$q, G_shift1=$G_shift1, G_shift2=$G_shift2")
         for g1 in -Nshell:Nshell, g2 in -Nshell:Nshell
-            if abs2(g1 * V_int.lattice.G1 + g2 * V_int.lattice.G2) > Nshell^2 && min(abs(g1), abs(g2)) > 2
+            if abs2(g1 * V_int.lattice.G1 + g2 * V_int.lattice.G2) > shell_cutoff^2
                 continue
             end
 
@@ -282,6 +291,7 @@ module LLT
 
             sign = ita(g1+G_shift1[1], g2+G_shift1[2]) * ita(g1+G_shift2[1], g2+G_shift2[2])
 
+            # println("g1,g2=$((g1,g2)), ql=$(abs(ql)), VFF=$(V * F1 * F2), sign=$sign, phase=$phase.")
             V_total += sign * V * F1 * F2 * phase
         end
 

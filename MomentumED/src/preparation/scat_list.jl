@@ -148,30 +148,40 @@ Scatter_terms = scat_pair_group(zero_momentum_pairs, para)
 ```
 """
 function scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para::EDPara;
-    shifts::Vector{Tuple{Float64, Float64}})::Vector{Scatter{2}}
+    shifts::Matrix{T})::Vector{Scatter{2}} where {T <: Real}
     
-    # @assert length(shifts) == para.Nc_conserve
+    # @assert size(shifts) == (2, para.Nc_conserve)
 
     Nc = para.Nc
     Nk = para.Nk
     Gk1, Gk2 = para.Gk
-    klist = float(para.k_list) #.+ [kshift[1]; kshift[2]]  # apply kshift
-
-    kshift = zeros(Float64, 2, para.Nc_conserve)
-    for i in size(kshift, 2)
-        kshift[1, i] = shifts[i][1]
-        kshift[2, i] = shifts[i][2]
-    end
-
     sys_size = (Gk1 != 0 && Gk2 != 0) ? Nk : 1
-    if Gk1 != 0
-        klist[1, :] ./= Gk1
-        kshift[1, :] ./= Gk1
+
+    if T <: Integer || T <: Rational
+        klist = para.k_list // 1
+        kshift = shifts // 1
+        if Gk1 != 0
+            klist[1, :] .//= Gk1
+            kshift[1, :] .//= Gk1
+        end
+        if Gk2 != 0
+            klist[2, :] .//= Gk2
+            kshift[2, :] .//= Gk2
+        end
+    else
+        klist = copy(para.k_list)
+        kshift = copy(shifts)
+        if Gk1 != 0
+            klist[1, :] ./= Gk1
+            kshift[1, :] ./= Gk1
+        end
+        if Gk2 != 0
+            klist[2, :] ./= Gk2
+            kshift[2, :] ./= Gk2
+        end
     end
-    if Gk2 != 0
-        klist[2, :] ./= Gk2
-        kshift[2, :] ./= Gk2
-    end
+
+
 
     Scatter_list = Vector{Scatter{2}}()
     # Iterate over all input and output pairs
@@ -281,7 +291,7 @@ Scatter_terms = scat_pair_group(zero_momentum_pairs, para)
 ```
 """
 function scat_pair_group_index(pair_group::Vector{Tuple{Int64,Int64}}, para::EDPara;
-    output::Bool = false)::Vector{Scatter{2}}
+    )::Vector{Scatter{2}}
     
     Nc = para.Nc
     Nk = para.Nk
@@ -292,8 +302,8 @@ function scat_pair_group_index(pair_group::Vector{Tuple{Int64,Int64}}, para::EDP
     Scatter_list = Vector{Scatter{2}}()
     # Iterate over all input and output pairs
     for (ki1, ki2) in pair_group, (kf1, kf2) in pair_group
-        output && println()
-        output && println("ki1, ki2, kf1, kf2 = ($ki1, $ki2), ($kf1, $kf2)")
+        PRINT_TWOBODY_SCATTER_PAIRS && println()
+        PRINT_TWOBODY_SCATTER_PAIRS && println("ki1, ki2, kf1, kf2 = ($ki1, $ki2), ($kf1, $kf2)")
         # Generate all component index combinations
         for ci1 in 1:Nc, ci2 in 1:Nc, cf1 in 1:Nc, cf2 in 1:Nc
             
@@ -321,14 +331,14 @@ function scat_pair_group_index(pair_group::Vector{Tuple{Int64,Int64}}, para::EDP
             if minmax(i1, i2) >= minmax(f1, f2)
 
                 # Calculate the direct and exchange amplitudes
-                output && print(fldmod1(i1, Nk), fldmod1(i2, Nk), fldmod1(f1, Nk), fldmod1(f2, Nk),"        ")
+                PRINT_TWOBODY_SCATTER_PAIRS && print(fldmod1(i1, Nk), fldmod1(i2, Nk), fldmod1(f1, Nk), fldmod1(f2, Nk),"        ")
                 amp_direct = para.V_int(
                     kf1, kf2, ki2, ki1,
                     cf1, cf2, ci2, ci1
                 )
 
                 # exchange i1 and i2
-                output && print(fldmod1(i2, Nk), fldmod1(i1, Nk), fldmod1(f1, Nk), fldmod1(f2, Nk))
+                PRINT_TWOBODY_SCATTER_PAIRS && print(fldmod1(i2, Nk), fldmod1(i1, Nk), fldmod1(f1, Nk), fldmod1(f2, Nk))
                 amp_exchange = para.V_int(
                     kf1, kf2, ki1, ki2,
                     cf1, cf2, ci1, ci2
@@ -336,7 +346,7 @@ function scat_pair_group_index(pair_group::Vector{Tuple{Int64,Int64}}, para::EDP
 
                 amp = (amp_direct - amp_exchange) / sys_size
                 iszero(amp) || push!(Scatter_list, NormalScatter(amp, f1, f2, i2, i1; upper_hermitian = true))
-                output && println()
+                PRINT_TWOBODY_SCATTER_PAIRS && println()
             end
         
         end
@@ -390,14 +400,22 @@ function ED_sortedScatterList_twobody(para::EDPara;
     if para.momentum_coordinate
 
         if isnothing(kshift)
-            shifts = fill((0.0, 0.0), para.Nc_conserve)
-        elseif kshift isa Tuple{Float64, Float64}
-            shifts = fill(kshift, para.Nc_conserve)
-        elseif kshift isa Vector{Tuple{Float64, Float64}}
-            @assert length(kshift) == para.Nc_conserve "length(kshift) isn't equal to para.Nc_conserve."
+            shifts = zeros(Int64, 2, para.Nc_conserve)
+        elseif kshift isa Tuple
+            shifts = Matrix{eltype(kshift)}(undef, 2, para.Nc_conserve)
+            shifts[1,:] .= kshift[1]
+            shifts[2,:] .= kshift[2]
+        elseif kshift isa Vector
+            @assert length(kshift) == para.Nc_conserve "length of kshift isn't equal to para.Nc_conserve."
+            shifts = Matrix{eltype(kshift[1])}(undef, 2, para.Nc_conserve)
+            for i in 1:para.Nc_conserve
+                shifts[:,i] .= kshift[i]
+            end
+        elseif kshift isa Matrix
+            @assert size(kshift) == (2, para.Nc_conserve) "size of kshift isn't equal to para.Nc_conserve."
             shifts = kshift
         else
-            throw(AssertionError("kshift could be nothing, Tuple{Float64, Float64}, or Vector{Tuple{Float64, Float64}}."))
+            throw(AssertionError("kshift could be nothing, Tuple{R,R}, Vector{Tuple{R,R}}, or Matrix{R}, where R<:Real."))
         end
 
         for (K_total, pairs) in momentum_groups

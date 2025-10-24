@@ -22,9 +22,8 @@ include("preparation/momentum_decomposition.jl")
 include("preparation/scat_list.jl")
 include("method/sparse_matrix.jl")
 include("method/linear_map.jl")
-include("analysis/onebody_reduced_density_matrix.jl")
+include("analysis/particle_reduced_density_matrix.jl")
 include("analysis/orbital_reduced_density_matrix.jl")
-# include("analysis/entanglement_entropy.jl")
 include("analysis/manybody_connection.jl")
 
 # preparation
@@ -40,8 +39,8 @@ public ED_HamiltonianMatrix_threaded, LinearMap
 export EDsolve
 
 # analysis - reduced density matrix
-export RDM_OneBody
-export RDM_NumberBlocks, RDM_MomentumCoefficients
+export PES_1rdm, PES_MomtBlocks, PES_MomtBlock_coefficients
+export OES_NumMomtBlocks, OES_NumMomtBlock_coeffcients
 
 # analysis - many-body connection
 export ED_connection_step, ED_connection_gaugefixing!
@@ -107,11 +106,11 @@ function EDsolve(subspace::HilbertSubspace{bits}, sorted_scat_lists::Vector{<: S
 
         @assert max_dense_dim > min_sparse_dim
         if method == :sparse && length(subspace) < min_sparse_dim
-            @warn "Hilbert space dimension < $min_sparse_dim; switch to method=:dense automatically."
+            @info "Hilbert space dimension < $min_sparse_dim; switch to method=:dense automatically."
             method = :dense
         end
         if method == :dense && length(subspace) > max_dense_dim
-            @warn "Hilbert space dimension > $max_dense_dim; switch to method=:sparse automatically."
+            @info "Hilbert space dimension > $max_dense_dim; switch to method=:sparse automatically."
             method = :sparse
         end
 

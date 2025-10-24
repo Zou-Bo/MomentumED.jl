@@ -1,11 +1,11 @@
-function RDM_NumberBlocks(para::EDPara, orbs, 
+function OES_NumMomtBlocks(para::EDPara, orb_list, 
     Ne::Union{Vector{Int64}, Tuple{Vararg{Int64}}})
 
     @assert length(Ne) == para.Nc_conserve
 
     # generate maskA and maskB
     bits = para.Nk * para.Nc
-    maskA_mbs = MBS64(bits, orbs)
+    maskA_mbs = MBS64(bits, orb_list)
     maskB_mbs = MBS64_complete(maskA_mbs)
     maskA = occ_list(maskA_mbs)
     maskB = occ_list(maskB_mbs)
@@ -25,10 +25,10 @@ function RDM_NumberBlocks(para::EDPara, orbs,
     for indexA in CartesianIndices(subspacesA_list)
         NA = Tuple(indexA) .- 1
         NB = Tuple(Ne) .- NA
-        Ass, Ak1, Ak2 = ED_momentum_subspaces(para, NA; mask = maskA);
-        Bss, Bk1, Bk2 = ED_momentum_subspaces(para, NB; mask = maskB);
-        subspacesA_list[indexA] = Ass
-        subspacesB_list[indexA] = Bss
+        Asubspace, Ak1, Ak2 = ED_momentum_subspaces(para, NA; mask = maskA);
+        Bsubspace, Bk1, Bk2 = ED_momentum_subspaces(para, NB; mask = maskB);
+        subspacesA_list[indexA] = Asubspace
+        subspacesB_list[indexA] = Bsubspace
         momentumA_list[indexA] = tuple.(Ak1, Ak2)
         momentumB_list[indexA] = tuple.(Bk1, Bk2)
     end
@@ -37,13 +37,13 @@ function RDM_NumberBlocks(para::EDPara, orbs,
 
 end
 
-function RDM_MomentumCoefficients(para::EDPara, vector::MBS64Vector{bits}, momentum::Tuple{<:Real, <:Real},
+function OES_NumMomtBlock_coeffcients(para::EDPara, vector::MBS64Vector{bits}, momentum::Tuple{<:Real, <:Real},
     subspaceA::Vector{HilbertSubspace{bits}}, subspaceB::Vector{HilbertSubspace{bits}}, 
     momentumA::Vector{Tuple{Int64, Int64}}, momentumB::Vector{Tuple{Int64, Int64}};
     transpose::Bool = false) where {bits}
 
     if length(subspaceA) > length(subspaceB)
-        return RDM_MomentumCoefficients(para, vector, momentum,
+        return OES_NumMomtBlock_CoefMatrices(para, vector, momentum,
             subspaceB, subspaceA, momentumB, momentumA; transpose = true)
     else
         collect_matrices = Vector{Matrix{ComplexF64}}(undef, length(subspaceA))

@@ -85,14 +85,26 @@ function *(mbs1::MBS64{b1}, mbs2::MBS64{b2}) where {b1, b2}
 end
 
 """
-    +(mbs1::MBS64{b}, mbs2::MBS64{b}) where {b}
+    +(mbs1::MBS64{b}, mbs2::MBS64{b})::MBS64{b} where {b}
 
 Combine(plus) two MBS64 states in the same(combined) Hilbert space with mbs1.n | mbs2.n.
 Used for combining states generated with complete masks.
 Repeated occupations on the same bit, if exist, count once.
+See no_overlap().
 """
-function +(mbs1::MBS64{b}, mbs2::MBS64{b}) where {b}
+function +(mbs1::MBS64{b}, mbs2::MBS64{b})::MBS64{b} where {b}
     MBS64{b}(mbs1.n | mbs2.n)
+end
+
+"""
+    no_overlap(mbs1::MBS64{b}, mbs2::MBS64{b})::Bool where {b}
+
+Check if two MBS64 states have overlap in occupation bits.
+Two MBS64 states are assumed to be physical.
+Return true if they have no overlap.
+"""
+function no_overlap(mbs1::MBS64{b}, mbs2::MBS64{b})::Bool where {b}
+    iszero(mbs1.n & mbs2.n)
 end
 
 """
