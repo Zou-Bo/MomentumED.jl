@@ -10,26 +10,29 @@ module LLT
     # Global variables, usually no need to change
     const W0::Float64 = 1.0                     # Interaction strength (energy unit)
     const l::Float64 = 1.0                      # Magnetic Length (length/momentum unit)
-    const Nshell::Int64 = 3                     # number of shells includes in the interaction computation
+    Nshell::Float64 = 8.0                       # number of shells included in the interaction computation (|G| <= Nshell)
 
 
     struct ReciprocalLattice
         G1::ComplexF64
         G2::ComplexF64
-        function ReciprocalLattice(G2_ratio_G1::ComplexF64; G1phase::Float64 = 0.0)
-            # G1 * G2 * sin(angle(G2_ratio_G1)) = G1^2 * abs(G2_ratio_G1) * sin(angle(G2_ratio_G1)) = 2π/l^2
-            G1 = sqrt( 2π/l^2 / abs(G2_ratio_G1) / sin(angle(G2_ratio_G1))) * cis(G1phase)
-            G2 = G1 * G2_ratio_G1
-            new(G1, G2)
+        exact_ratio::Real
+        exact_angle_in_pi::Real
+
+        function ReciprocalLattice(G2_ratio_G1::Real, angle_in_pi::Real; G1phase_in_pi::Real = 0.0)
+            # G1 * G2 * sin(angle) = G1^2 * abs(ratio) * sin(angle) = 2π/l^2
+            G1 = sqrt( 2π/l^2 / abs(G2_ratio_G1) / sinpi(angle_in_pi)) * cispi(G1phase_in_pi)
+            G2 = G1 * G2_ratio_G1 * cispi(angle_in_pi)
+            new(G1, G2, G2_ratio_G1, angle_in_pi)
         end
     end
     function ReciprocalLattice(s::Symbol)
         if s == :square
-            return ReciprocalLattice(1.0im)
+            return ReciprocalLattice(1, 1//2)
         elseif s == :triangular
-            return ReciprocalLattice(cispi(2//3))
+            return ReciprocalLattice(1, 2//3)
         else
-            throw(AssertionError("Symbol construction can only be :square or :triangular, use ratio construction instead."))
+            throw(AssertionError("Symbol construction is for :square or :triangular, use ratio-angle construction instead."))
         end
     end
 
@@ -79,10 +82,10 @@ module LLT
 
     # Shift a momentum to the Brillouin zone
     function BZ(k::Tuple{<: Real, <: Real}, lattice::ReciprocalLattice)::Tuple{<: Real, <: Real}
-        k1 = rem(k[1], 1, RoundNearest)
-        k2 = rem(k[2], 1, RoundNearest)
+        k1 = rem(k[1], 1, RoundDown)
+        k2 = rem(k[2], 1, RoundDown)
 
-        dot_product = (abs2(lattice.G1), real(lattice.G1 * conj(lattice.G2)), abs2(lattice.G2))
+        dot_product = (1, lattice.exact_ratio * cispi(lattice.exact_angle_in_pi), lattice.exact_ratio^2)
 
         @inline function in_BZ(k1, k2, G1, G2)
             G² = G1^2 * dot_product[1] + 2G1*G2 * dot_product[2] + G2^2 * dot_product[3]
@@ -90,12 +93,10 @@ module LLT
             return -0.5G² <= kdotG < 0.5G²
         end
 
-        for g1 in -1:1, g2 in -1:1
+        for g1 in -1:0, g2 in -1:0
             kk1 = k1 + g1
             kk2 = k2 + g2
 
-            abs(kk1) <= 1 &&
-            abs(kk2) <= 1 &&
             in_BZ(kk1, kk2, 1, -1) && 
             in_BZ(kk1, kk2, 1, 0) &&
             in_BZ(kk1, kk2, 1, 1) &&
@@ -254,7 +255,7 @@ module LLT
         V_total = ComplexF64(0.0)
         # Sum over reciprocal lattice vectors for convergence
         for g1 in -Nshell:Nshell, g2 in -Nshell:Nshell
-            if abs2(g1 * V_int.lattice.G1 + g2 * V_int.lattice.G2) > Nshell
+            if abs2(g1 * V_int.lattice.G1 + g2 * V_int.lattice.G2) > Nshell^2 && min(abs(g1), abs(g2)) > 2
                 continue
             end
 
