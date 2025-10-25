@@ -81,7 +81,7 @@ function V_int(kf1, kf2, ki2, ki1, cf1=1, cf2=1, ci2=1, ci1=1)::ComplexF64
         phase = cispi(2.0phase_angle)
         sign = ita(g1+G_shift1[1], g2+G_shift1[2]) * ita(g1+G_shift2[1], g2+G_shift2[2])
 
-        V_total += sign * phase * VFF(qq1, qq2)
+        V_total += sign * phase * VFF(Float64(qq1), Float64(qq2))
     end
 
     return V_total

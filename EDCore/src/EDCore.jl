@@ -19,14 +19,8 @@ export Scatter, MBOperator
 export NormalScatter, get_body, isnormal, isnormalupper, isdiagonal
 export sort_merge_scatlist, isupper, ED_bracket, ED_bracket_threaded
 
-# Using these to force precompile multiplications
-Scatter{1}(0.1, (1,), (2,)) * MBS64{3}(UInt64(2))
-Scatter{2}(0.1, (1,2), (2,3)) * MBS64{3}(UInt64(6))
-Scatter{3}(0.1, (1,2,3), (1,2,3)) * MBS64{3}(UInt64(7))
-MBS64{3}(UInt64(1)) * Scatter{1}(0.1, (1,), (2,))
-MBS64{3}(UInt64(3)) * Scatter{2}(0.1, (1,2), (2,3))
-MBS64{3}(UInt64(7)) * Scatter{3}(0.1, (1,2,3), (1,2,3))
-
-
+if ccall(:jl_generating_output, Cint, ()) == 1
+    include("precompile.jl")
+end
 
 end

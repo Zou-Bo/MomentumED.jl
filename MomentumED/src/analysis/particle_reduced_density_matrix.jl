@@ -29,7 +29,7 @@ function PES_1rdm(ψ::MBS64Vector{bits, F}) where{bits, F <: AbstractFloat}
 end
 
 """
-    particle_hole_density(mask2::MBS64{bits}, mask1::MBS64{bits}, mbs_in::MBS64{bits};
+    particlehole_density(mask2::UInt64, mask1::UInt64, mbs_in::MBS64{bits};
         particle::Bool = true) where{bits}
 
 Apply density operator of particles/holes on incident state: operator2 * operator1 * mbs_in.
@@ -42,7 +42,7 @@ Return (true, mbs_out) if succeed. Otherwise, return (false, mbs_in).
 
 Different to Scatter * MBS64, there's no amplitute or signs due to swapping.
 """
-function particle_holt_density(mask2::MBS64{bits}, mask1::MBS64{bits}, 
+function particlehole_density(mask2::UInt64, mask1::UInt64, 
     mbs_in::MBS64{bits}; particle::Bool = true
     )::Tuple{Bool, MBS64{bits}} where{bits}
 
@@ -66,15 +66,46 @@ function particle_holt_density(mask2::MBS64{bits}, mask1::MBS64{bits},
     return false, mbs_in
 end
 
-
-
+"""
+"""
 function PES_MomtBlock_rdm(para::EDPara, ψ::MBS64Vector{bits, F}, 
     conserved_component_subspace::HilbertSubspace{bits},
     particle_hole::BitVector = trues(para.Nc_conserve)) where {bits, F<:AbstractFloat}
     
     @assert length(particle_hole) == para.Nc_conserve "lengths of subspaces and particle_hole should == para.Nc_conserve."
 
-    component_mask = UInt64(1) << (para.Nk * para.Nc_hopping) - 1
+    bit_c = para.Nk * para.Nc_hopping
+    component_mask = UInt64(1) << bit_c - 1
+    mask1 = Vector{UInt64}(undef, para.Nc_conserve)
+    mask2 = Vector{UInt64}(undef, para.Nc_conserve)
 
 
+    len = length(conserved_component_subspace)
+    rdm = zeros(Complex{F}, len, len)
+    for i in 1:len, j in 1:len
+        if i <= j
+            # decompose relevant orbitals into each conserved components
+            for c in 1:para.Nc_conserve
+                mask1[c] = conserved_component_subspace[i].n & (component_mask << (c-1)*bit_c)
+                mask2[c] = conserved_component_subspace[j].n & (component_mask << (c-1)*bit_c)
+            end
+            # try to apply creation/annihilation; if pass, add to rdm
+            for x_in in eachindex(ψ.vec)
+                pass, mbs = true, ψ.space.list[x_in]
+                for c in 1:para.Nc_conserve
+                    if pass
+                        pass, mbs = particlehole_density(mask2[c], mask1[c], mbs; particle = particle_hole[c])
+
+                    end
+                end
+                if pass
+                    x_out = get(ψ.space, mbs)
+                    if !iszero(x_out)
+                        rdm[i,j] += conj(ψ.vec[x_out]) * ψ.vec[x_in]
+                    end
+                end
+            end
+        end
+    end
+    return Hermitian(rdm, :U)
 end

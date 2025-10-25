@@ -68,7 +68,9 @@ function Base.show(io::IO, st::Scatter{N}) where {N}
 end
 
 """
-Generate a scattering term with normal ordering (now working for N = 1, 2)
+    NormalScatter(V::ComplexF64, ij::Int64...; upper_hermitian::Bool = false)::Scatter
+
+Generate a scattering term with normal ordering. Optimized for N=1,2.
 term: V * c†_i1 c†_i2 ... c†_iN c_jN ... c_j2 c_j1 (j-in, i-out )
 (1) j1 > j2 > ... > jN (no equality)
 (2) i1 > i2 > ... > iN (no equality)
