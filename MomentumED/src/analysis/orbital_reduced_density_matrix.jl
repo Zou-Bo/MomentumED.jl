@@ -37,16 +37,16 @@ function OES_NumMomtBlocks(para::EDPara, orb_list,
 
 end
 
-function OES_NumMomtBlock_coeffcients(para::EDPara, vector::MBS64Vector{bits}, momentum::Tuple{<:Real, <:Real},
+function OES_NumMomtBlock_coef(para::EDPara, vector::MBS64Vector{bits, F}, momentum::Tuple{<:Real, <:Real},
     subspaceA::Vector{HilbertSubspace{bits}}, subspaceB::Vector{HilbertSubspace{bits}}, 
     momentumA::Vector{Tuple{Int64, Int64}}, momentumB::Vector{Tuple{Int64, Int64}};
-    transpose::Bool = false) where {bits}
+    transpose::Bool = false) where {bits, F<:AbstractFloat}
 
     if length(subspaceA) > length(subspaceB)
-        return OES_NumMomtBlock_CoefMatrices(para, vector, momentum,
+        return OES_NumMomtBlock_coef(para, vector, momentum,
             subspaceB, subspaceA, momentumB, momentumA; transpose = true)
     else
-        collect_matrices = Vector{Matrix{ComplexF64}}(undef, length(subspaceA))
+        collect_matrices = Vector{Matrix{Complex{F}}}(undef, length(subspaceA))
         Gk = para.Gk
         for iA in eachindex(subspaceA)
             # momentum pair
@@ -62,12 +62,12 @@ function OES_NumMomtBlock_coeffcients(para::EDPara, vector::MBS64Vector{bits}, m
             
             # fill the coefficient matrices
             if isnothing(iB)
-                collect_matrices[iA] = Matrix{ComplexF64}(undef, 0, 0)
+                collect_matrices[iA] = Matrix{Complex{F}}(undef, 0, 0)
             else
                 if !transpose
-                    collect_matrices[iA] = Matrix{ComplexF64}(undef, length(subspaceA[iA]), length(subspaceB[iB]))
+                    collect_matrices[iA] = Matrix{Complex{F}}(undef, length(subspaceA[iA]), length(subspaceB[iB]))
                 else
-                    collect_matrices[iA] = Matrix{ComplexF64}(undef, length(subspaceB[iB]), length(subspaceA[iA]))
+                    collect_matrices[iA] = Matrix{Complex{F}}(undef, length(subspaceB[iB]), length(subspaceA[iA]))
                 end
                 for (A, mbsA) in enumerate(subspaceA[iA].list)
                     for (B, mbsB) in enumerate(subspaceB[iB].list)

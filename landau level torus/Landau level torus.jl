@@ -10,7 +10,7 @@ module LLT
     # Global variables, usually no need to change
     const W0::Float64 = 1.0                     # Interaction strength (energy unit)
     const l::Float64 = 1.0                      # Magnetic Length (length/momentum unit)
-    shell_cutoff::Float64 = 20.0                 # number of shells (|Gl| <= shell_cutoff) included in the interaction 
+    shell_cutoff::Float64 = 10.0                 # number of shells (|Gl| <= shell_cutoff) included in the interaction 
 
 
     struct ReciprocalLattice

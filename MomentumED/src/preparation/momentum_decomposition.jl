@@ -197,6 +197,8 @@ end
 
 global PRINT_RECURSIVE_MOMENTUM_DIVISION::Bool = false
 
+"""
+"""
 function mbslist_recursive_iteration!(subspaces::Vector{HilbertSubspace{bits}}, 
     subspace_k1::Vector{Int64}, subspace_k2::Vector{Int64}, 
     para::EDPara, N_each_component::Vector{Int64}, 
@@ -208,9 +210,9 @@ function mbslist_recursive_iteration!(subspaces::Vector{HilbertSubspace{bits}},
     if !isempty(N_each_component) 
         PRINT_RECURSIVE_MOMENTUM_DIVISION && println("Enter loop with $N_each_component. 
         Momentum $(accumulated_momentum[1]) $(accumulated_momentum[2])\n\t$accumulated_mbs\n")
-        for mbs_smaller in mbslist_onecomponent(para, N_each_component[end], mask)
+        for mbs_smaller in mbslist_onecomponent(para, abs(N_each_component[end]), mask)
             PRINT_RECURSIVE_MOMENTUM_DIVISION && println("generated mbs in the new component:\n$mbs_smaller")
-            new_momentum = MBS_totalmomentum(para, mbs_smaller)
+            new_momentum = sign(N_each_component[end]) * MBS_totalmomentum(para, mbs_smaller)
             mbslist_recursive_iteration!(subspaces, subspace_k1, subspace_k2, para, 
                 N_each_component[begin:end-1],          # remaining components
                 accumulated_mbs * mbs_smaller,          # updated MBS64

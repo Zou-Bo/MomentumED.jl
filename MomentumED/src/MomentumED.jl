@@ -5,7 +5,7 @@ This module only sets sectors of total (crystal) momentum, also called blocks.
 """
 module MomentumED
 
-using MomentumEDCore
+using EDCore
 using LinearAlgebra
 using SparseArrays
 using KrylovKit
@@ -13,8 +13,8 @@ using KrylovKit
 # types from MomentumEDCore
 export MBS64, HilbertSubspace, MBS64Vector, Scatter, MBOperator
 public get_bits, get_body, make_dict!, delete_dict!
-public isphysical, isupper, isnormal, isnormalupper
-export ED_bracket, ED_bracket_threaded # , multiplication_threaded
+public isphysical, isupper, isnormal, isnormalupper, isdiagonal
+export ED_bracket, ED_bracket_threaded
 
 # Include utilities
 include("preparation/init_parameter.jl")
@@ -38,9 +38,9 @@ public ED_HamiltonianMatrix_threaded, LinearMap
 # main solving function
 export EDsolve
 
-# analysis - reduced density matrix
-export PES_1rdm, PES_MomtBlocks, PES_MomtBlock_coefficients
-export OES_NumMomtBlocks, OES_NumMomtBlock_coeffcients
+# analysis - reduced density matrix for entanglement spectrum
+export PES_1rdm, PES_MomtBlocks, PES_MomtBlock_rdm
+export OES_NumMomtBlocks, OES_NumMomtBlock_coef
 
 # analysis - many-body connection
 export ED_connection_step, ED_connection_gaugefixing!
