@@ -13,7 +13,11 @@ function PES_1rdm(ψ::MBS64Vector{bits, F}) where{bits, F <: AbstractFloat}
                         mbs_out = occupy!(mbs_mid, (i,))
                         x_out = get(ψ.space, mbs_out)
                         if x_out != 0
-                            rdm[i,j] += conj(ψ.vec[x_out]) * ψ.vec[x_in]
+                            if iseven(scat_occ_number(mbs_mid, (i,)) + scat_occ_number(mbs_mid, (j,)))
+                                rdm[i,j] += conj(ψ.vec[x_out]) * ψ.vec[x_in]
+                            else
+                                rdm[i,j] -= conj(ψ.vec[x_out]) * ψ.vec[x_in]
+                            end
                         end
                     end
                 end
@@ -29,79 +33,57 @@ function PES_1rdm(ψ::MBS64Vector{bits, F}) where{bits, F <: AbstractFloat}
 end
 
 """
-    particlehole_density(mask2::UInt64, mask1::UInt64, mbs_in::MBS64{bits};
-        particle::Bool = true) where{bits}
-
-Apply density operator of particles/holes on incident state: operator2 * operator1 * mbs_in.
-If particle = true (particle density),
-first annihilate particles in mask1, then create particles in mask2;
-if particle = false (hole density),
-first create particles (annihilate holes) in mask1, then annihilate particles (create holes) in mask2.
-
-Return (true, mbs_out) if succeed. Otherwise, return (false, mbs_in).
-
-Different to Scatter * MBS64, there's no amplitute or signs due to swapping.
-"""
-function particlehole_density(mask2::UInt64, mask1::UInt64, 
-    mbs_in::MBS64{bits}; particle::Bool = true
-    )::Tuple{Bool, MBS64{bits}} where{bits}
-
-    if particle
-        if isoccupied(mbs_in, mask1)
-            mbs_mid = empty!(mbs_in, mask1; check = false)
-            if isempty(mbs_mid, mask2)
-                mbs_out = occupy!(mbs_mid, mask2; check = false)
-                return true, mbs_out
-            end
-        end
-    else
-        if isempty(mbs_in, mask1)
-            mbs_mid = occupy!(mbs_in, mask1; check = false)
-            if isoccupied(mbs_mid, mask2)
-                mbs_out = empty!(mbs_mid, mask2; check = false)
-                return true, mbs_out
-            end
-        end
-    end
-    return false, mbs_in
-end
-
-"""
 """
 function PES_MomtBlock_rdm(para::EDPara, ψ::MBS64Vector{bits, F}, 
-    conserved_component_subspace::HilbertSubspace{bits},
-    particle_hole::BitVector = trues(para.Nc_conserve)) where {bits, F<:AbstractFloat}
+    part_subspace::HilbertSubspace{bits},
+    ph_transform::BitVector = falses(para.Nc_conserve)) where {bits, F<:AbstractFloat}
     
-    @assert length(particle_hole) == para.Nc_conserve "lengths of subspaces and particle_hole should == para.Nc_conserve."
+    @assert length(ph_transform) == para.Nc_conserve "lengths of subspaces and particle_hole should == para.Nc_conserve."
+    @assert bits == para.Nk * para.Nc_hopping * para.Nc_conserve
 
     bit_c = para.Nk * para.Nc_hopping
-    component_mask = UInt64(1) << bit_c - 1
-    mask1 = Vector{UInt64}(undef, para.Nc_conserve)
-    mask2 = Vector{UInt64}(undef, para.Nc_conserve)
+    component_width = UInt64(1) << bit_c - 1
+    ph_trans_mask = UInt64(0)
+    for c in 1:para.Nc_conserve;
+        if ph_transform[c] 
+            ph_trans_mask |= component_width << ((c-1)*bit_c)
+        end
+    end
+    # println("ph_trans_mask= $ph_trans_mask")
 
-
-    len = length(conserved_component_subspace)
-    rdm = zeros(Complex{F}, len, len)
-    for i in 1:len, j in 1:len
-        if i <= j
-            # decompose relevant orbitals into each conserved components
-            for c in 1:para.Nc_conserve
-                mask1[c] = conserved_component_subspace[i].n & (component_mask << (c-1)*bit_c)
-                mask2[c] = conserved_component_subspace[j].n & (component_mask << (c-1)*bit_c)
-            end
-            # try to apply creation/annihilation; if pass, add to rdm
-            for x_in in eachindex(ψ.vec)
-                pass, mbs = true, ψ.space.list[x_in]
-                for c in 1:para.Nc_conserve
-                    if pass
-                        pass, mbs = particlehole_density(mask2[c], mask1[c], mbs; particle = particle_hole[c])
-
-                    end
-                end
-                if pass
-                    x_out = get(ψ.space, mbs)
-                    if !iszero(x_out)
-                        rdm[i,j] += conj(ψ.vec[x_out]) * ψ.vec[x_in]
+    rdm = zeros(Complex{F}, length(part_subspace), length(part_subspace))
+    for (i, anni) in enumerate(part_subspace.list)
+        for (j, crea) in enumerate(part_subspace.list)
+            if i <= j
+                # println("anni: $anni \n occ_list: ", occ_list(anni))
+                # println("anni: $crea \n occ_list: ", occ_list(crea))
+                # try to apply creation/annihilation; if pass, add to rdm
+                for (x_in, mbs_in) in enumerate(ψ.space.list)
+                    mbs_in_ph = flip!(mbs_in, ph_trans_mask)
+                    # println("$mbs_in is flipped into $mbs_in_ph")
+                    if isoccupied(mbs_in_ph, anni.n)
+                        mbs_mid_ph = empty!(mbs_in_ph, anni.n; check = false)
+                        if isempty(mbs_mid_ph, crea.n)
+                            mbs_out_ph = occupy!(mbs_mid_ph, crea.n; check = false)
+                            mbs_out = flip!(mbs_out_ph, ph_trans_mask)
+                            x_out = get(ψ.space, mbs_out)
+                            if !iszero(x_out)
+                                # determine the sign using the states before ph-transform
+                                if iseven(scat_occ_number(mbs_in, occ_list(anni)) + scat_occ_number(mbs_out, occ_list(crea)))
+                                    # println("even")
+                                    rdm[i,j] += conj(ψ.vec[x_out]) * ψ.vec[x_in]
+                                else
+                                    # println("odd")
+                                    rdm[i,j] -= conj(ψ.vec[x_out]) * ψ.vec[x_in]
+                                end
+                            else
+                                # println("find $mbs_out failed")
+                            end
+                        else
+                            # println("occupy $mbs_mid_ph with $(crea.n) failed.")
+                        end
+                    else
+                        # println("empty $mbs_in_ph with $(anni.n) failed")
                     end
                 end
             end

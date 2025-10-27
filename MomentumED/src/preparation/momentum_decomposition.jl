@@ -2,7 +2,7 @@
 """
 This file provides:
 Iterators over MBS64 combinations of t electrons in n states (in one component) in sorted order;
-Recursive iteration function over multi-component MBS64 with given para and elenctron number of each component;
+Recursive iteration function over multi-component MBS64 with given para and electron number of each component;
 Generating Hilbert subspaces distinguished by total momentum using the previous function.
 """
 
@@ -198,6 +198,24 @@ end
 global PRINT_RECURSIVE_MOMENTUM_DIVISION::Bool = false
 
 """
+    mbslist_recursive_iteration!(...)
+
+An internal recursive function that constructs many-body states and sorts them into momentum subspaces.
+
+The function works by processing one conserved component at a time. It loops through all valid states for the current component and then calls itself recursively for the next component, accumulating the state (`MBS64`) and total momentum.
+
+# Recursion Logic
+The recursion proceeds from the last element of `N_each_component` to the first. In each step, it generates all possible states for the current component based on the particle number `abs(N_each_component[end])` and combines them (via `*`) with the `accumulated_mbs` from the previous steps. The momentum is also updated.
+
+# Particle vs. Hole Creation
+The sign of the number in `N_each_component` determines whether particles or holes are created:
+- **Positive `N`**: Creates `N` particles in an empty sea of orbitals for the current component.
+- **Negative `N`**: Creates `abs(N)` holes in a filled sea of orbitals. This is used for calculations like the particle reduced density matrix where one considers states in the complementary space.
+
+# Mask
+The `mask` argument, if provided, restricts the set of orbitals that can be occupied (for positive `N`) or made into holes (for negative `N`) for the single-component states.
+
+When the recursion is complete (`N_each_component` is empty), the final state and its total momentum are known, and the state is pushed into the correct momentum subspace.
 """
 function mbslist_recursive_iteration!(subspaces::Vector{HilbertSubspace{bits}}, 
     subspace_k1::Vector{Int64}, subspace_k2::Vector{Int64}, 
@@ -212,7 +230,7 @@ function mbslist_recursive_iteration!(subspaces::Vector{HilbertSubspace{bits}},
         Momentum $(accumulated_momentum[1]) $(accumulated_momentum[2])\n\t$accumulated_mbs\n")
         for mbs_smaller in mbslist_onecomponent(para, abs(N_each_component[end]), mask)
             PRINT_RECURSIVE_MOMENTUM_DIVISION && println("generated mbs in the new component:\n$mbs_smaller")
-            new_momentum = sign(N_each_component[end]) * MBS_totalmomentum(para, mbs_smaller)
+            new_momentum = sign(N_each_component[end]) .* MBS_totalmomentum(para, mbs_smaller)
             mbslist_recursive_iteration!(subspaces, subspace_k1, subspace_k2, para, 
                 N_each_component[begin:end-1],          # remaining components
                 accumulated_mbs * mbs_smaller,          # updated MBS64
@@ -237,6 +255,8 @@ end
         momentum_restriction = false, k1range=(-2,2), k2range=(-2,2),
         momentum_list::Vector{Tuple{Int64, Int64}} = Vector{Tuple{Int64, Int64}}(),
         ) where {bits}
+
+需要更详细的docstring，解释他的循环结构，解释mask的意义。当N出现负数时，含义是在为1的位上生成“空穴“，这在MomentumED/src/analysis/particle_reduced_density_matrix.jl中会用到。
 
 Divide a list of MBS64 states into momentum blocks based on total momentum.
 

@@ -10,8 +10,8 @@ module LLT
     # Global variables, usually no need to change
     const W0::Float64 = 1.0                     # Interaction strength (energy unit)
     const l::Float64 = 1.0                      # Magnetic Length (length/momentum unit)
-    shell_cutoff::Float64 = 10.0                 # number of shells (|Gl| <= shell_cutoff) included in the interaction 
-
+    Gl_cutoff::Float64 = 10.0                   # number of shells (|Gl| <= Gl_cutoff) included in the interaction 
+    PRINT_INT_DETAIL::Bool = false              # print the details in calculating the interaction
 
     struct ReciprocalLattice
         G1::ComplexF64
@@ -39,7 +39,6 @@ module LLT
             throw(AssertionError("Symbol construction is for :square or :triangular, use ratio-angle construction instead."))
         end
     end
-
 
     # a list of component (layer, level, Chern number, other/pseudospin)
     # layer can only be 1 or 2; Chern number can only be 1 or -1
@@ -85,9 +84,7 @@ module LLT
     
 
     # Shift a momentum to the Brillouin zone
-    function BZ(k::Tuple{<: Real, <: Real}, lattice::ReciprocalLattice;
-        # output = false
-        )::Tuple{<: Real, <: Real}
+    function BZ(k::Tuple{<: Real, <: Real}, lattice::ReciprocalLattice)::Tuple{<: Real, <: Real}
         k1 = rem(k[1], 1, RoundDown)
         k2 = rem(k[2], 1, RoundDown)
 
@@ -207,7 +204,8 @@ module LLT
     # Momentum inputs are Tuple{Float64, Float64} representing (k1, k2) in ratio of Gk
     mutable struct LandauInteraction <: Function
 
-        const lattice::ReciprocalLattice                  # {G1, G2}
+        const lattice::ReciprocalLattice            # {G1, G2}
+        const Nshell::Int64
 
         D_l::Float64                                # Gate distance / magnetic length (D/l)
         d_l::Float64                                # Interlayer distance / magnetic length (d/l)
@@ -220,7 +218,12 @@ module LLT
         function LandauInteraction(lattice::ReciprocalLattice,
             components::Tuple{Int64, Int64, Int64, Int64}...
         )
-            new(lattice, 10.0, 0.0, [0.0; 0.7;], [1.5; 0.0;], 0.0, ComponentList(components...))
+            Gl_min = sqrt( min(abs2(lattice.G1), abs2(lattice.G2), 
+                abs2(lattice.G1 + lattice.G2), 
+                abs2(lattice.G1 - lattice.G2)) 
+            ) * l
+            Nshell = ceil(Int64, max(2.5, Gl_cutoff / Gl_min))
+            new(lattice, Nshell, 10.0, 0.0, [0.0; 0.7;], [1.5; 0.0;], 0.0, ComponentList(components...))
         end
 
     end
@@ -261,17 +264,16 @@ module LLT
 
         V_total = ComplexF64(0.0)
         # Sum over reciprocal lattice vectors for convergence
-        Nshell = round(Int64, shell_cutoff, RoundUp)
-        # println("Nshell=$Nshell, q=$q, G_shift1=$G_shift1, G_shift2=$G_shift2")
-        for g1 in -Nshell:Nshell, g2 in -Nshell:Nshell
-            if abs2(g1 * V_int.lattice.G1 + g2 * V_int.lattice.G2) > shell_cutoff^2
+        PRINT_INT_DETAIL && println("Nshell=$V_int.Nshell, q=$q, G_shift1=$G_shift1, G_shift2=$G_shift2")
+        for g1 in -V_int.Nshell:V_int.Nshell, g2 in -V_int.Nshell:V_int.Nshell
+            if abs2(g1 * V_int.lattice.G1 + g2 * V_int.lattice.G2) > Gl_cutoff^2
                 continue
             end
 
             # Construct the full momentum transfer including reciprocal lattice
             qq1 = q[1] + g1
             qq2 = q[2] + g2
-            ql::ComplexF64 = qq1 * V_int.lattice.G1 + qq2 * V_int.lattice.G2
+            ql::ComplexF64 = (qq1 * V_int.lattice.G1 + qq2 * V_int.lattice.G2) * l
             
             # mixed Coulomb and Haldane interaction
             V  = V_int.mix * V_Haldane(abs(ql); same_layer = (li1==li2), V_intra = V_int.V_intra, V_inter = V_int.V_inter)
@@ -291,7 +293,7 @@ module LLT
 
             sign = ita(g1+G_shift1[1], g2+G_shift1[2]) * ita(g1+G_shift2[1], g2+G_shift2[2])
 
-            # println("g1,g2=$((g1,g2)), ql=$(abs(ql)), VFF=$(V * F1 * F2), sign=$sign, phase=$phase.")
+            PRINT_INT_DETAIL && println("g1,g2=$((g1,g2)), ql=$(abs(ql)), VFF=$(V * F1 * F2), sign=$sign, phase=$phase.")
             V_total += sign * V * F1 * F2 * phase
         end
 
@@ -340,7 +342,7 @@ module LLT
         @assert Gk[1] > 0 && Gk[2] > 0
 
         q_coord = (q1 // Gk[1], q2 // Gk[2])
-        ql = q_coord[1] * para.V_int.lattice.G1 + q_coord[2] * para.V_int.lattice.G2
+        ql = (q_coord[1] * para.V_int.lattice.G1 + q_coord[2] * para.V_int.lattice.G2) * l
         C = cp.Chern[ci]
         F = complex(1.0)
         if form_factor

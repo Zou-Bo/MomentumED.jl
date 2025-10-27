@@ -54,12 +54,7 @@ dist/
 *.bak
 *.backup
 
-# Local configuration
-.claude/settings.local.json
+# working files
+Landau level disk/
+Landau level torus/test*
 
-# GitHub specific
-.github/workflows/*.yml.bak
-CLAUDE.md
-
-# AI-generated improvement suggestions
-possible_improvement_by_AI.md

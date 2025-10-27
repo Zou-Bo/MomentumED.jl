@@ -7,7 +7,7 @@ include("types/manybodystate_vector.jl")
 
 export MBS64, HilbertSubspace, MBS64Vector
 export get_bits, isphysical, occ_list, make_mask64, MBS64_complete
-export isoccupied, isempty, occupy!, empty, scat_occ_number
+export isoccupied, isempty, occupy!, empty!, flip!, scat_occ_number
 export idtype, make_dict!, delete_dict!, get_from_list, get_from_dict
 
 # Include utilities

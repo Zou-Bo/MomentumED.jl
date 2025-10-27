@@ -123,7 +123,14 @@ hash(mbs::MBS64) = hash(mbs.n)
 Return the list of occupied orbital indices (1-based) in the many-body state.
 """
 function occ_list(mbs::MBS64{bits}) where {bits}
-    return findall(==('1'), view(reverse(bitstring(mbs.n)), 1:bits))
+    occupied_bits = Int64[]
+    n = mbs.n
+    while n > 0
+        tz = trailing_zeros(n)
+        push!(occupied_bits, tz+1)
+        n ⊻= UInt64(1) << tz # clear the bit
+    end
+    return occupied_bits
 end
 
 """
@@ -326,6 +333,33 @@ function Base.empty!(mbs::MBS64{bits}, i_list::Tuple{Int64, Int64}; check::Bool=
         @assert mbs.n & mask == mask "Some orbitals are already empty."
     end
     return MBS64{bits}(mbs.n & ~mask)
+end
+
+"""
+    flip!(mbs::MBS64{bits}, i_list::UInt64) where {bits}
+    flip!(mbs::MBS64{bits}, i_list::Vector{Int64}) where {bits}
+    flip!(mbs::MBS64{bits}, i_list::Tuple{Vararg{Int64}}) where {bits}
+
+Create a new MBS64 with flipped occupations in the specified orbital(s).
+"""
+function flip!(mbs::MBS64{bits}, i_list::UInt64) where {bits}
+    return MBS64{bits}(mbs.n ⊻ i_list)
+end
+function flip!(mbs::MBS64{bits}, i_list::Vector{Int64}) where {bits}
+    mask = make_mask64(i_list)
+    return MBS64{bits}(mbs.n ⊻ mask)
+end
+function flip!(mbs::MBS64{bits}, i_list::Tuple{Vararg{Int64}}) where {bits}
+    mask = make_mask64(i_list)
+    return MBS64{bits}(mbs.n ⊻ mask)
+end
+function flip!(mbs::MBS64{bits}, i_list::Tuple{Int64}) where {bits}
+    mask = make_mask64(i_list)
+    return MBS64{bits}(mbs.n ⊻ mask)
+end
+function flip!(mbs::MBS64{bits}, i_list::Tuple{Int64, Int64}) where {bits}
+    mask = make_mask64(i_list)
+    return MBS64{bits}(mbs.n ⊻ mask)
 end
 
 """

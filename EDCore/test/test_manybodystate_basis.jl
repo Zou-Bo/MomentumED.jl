@@ -37,3 +37,10 @@ end
     @test scat_occ_number(mbs, (2, 4)) == 0
     @test scat_occ_number(mbs, (1, 5)) == 2
 end
+
+@testset "MBS64 Flip" begin
+    mbs = MBS64{8}(UInt(10)) # 00001010
+    @test flip!(mbs, [2, 4]) == MBS64{8}(UInt(0))
+    @test flip!(mbs, [1, 5]) == MBS64{8}(UInt(27)) # 00011011
+    @test flip!(MBS64{8}(UInt(0)), [2, 4]) == mbs
+end

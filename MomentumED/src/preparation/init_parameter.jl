@@ -9,29 +9,43 @@
 """
     mutable struct EDPara
 
-Parameters for momentum-conserved exact diagonalization calculations.
+Stores all parameters for a momentum-conserved exact diagonalization calculation.
 
-# Fields
-- `Gk::Tuple{Int64, Int64}`: Momentum conservation mod G (default: (0, 0))
-- `k_list::Matrix{Int64}`: k_list[:, i] = (k_1, k_2) momentum states
-- `Nk::Int64`: Number of momentum states
-- `Nc_hopping::Int64`: Number of components with hopping (not conserved)
-- `Nc_conserve::Int64`: Number of components with conserved quantum numbers
-- `Nc::Int64`: Total number of components
-- `H_onebody::Array{ComplexF64,4}`: One-body Hamiltonian terms
-- `V_int::Function`: Interaction potential function
-- `momentum_coordinate::Bool`: The V_int function use coordinate or index format for input momentum 
-- `FF_inf_angle::Function`: Berry connection step integral, argument of infinitesimal δk form factor
+The constructor is keyword-based.
+
+# Keyword Arguments
+- `k_list::Matrix{Int64}`: **Required**. A matrix where each column `k_list[:, i]` represents a momentum vector `(k_x, k_y)`.
+- `Gk::Tuple{Int64, Int64} = (0, 0)`: The reciprocal lattice vectors `(G1, G2)`. Momentum is conserved modulo `Gk`. A value of `0` means no periodicity in that direction.
+- `Nc_hopping::Int64 = 1`: The number of "hopping" components whose particle numbers are not conserved.
+- `Nc_conserve::Int64 = 1`: The number of components where the particle number is conserved (e.g., valley).
+- `H_onebody::Array{ComplexF64,4}`: The one-body part of the Hamiltonian. Defaults to zeros.
+- `V_int::Function`: A function defining the two-body interaction potential. See "Interaction Function" below. Defaults to a function that returns zero.
+- `FF_inf_angle::Function`: A function defining the Berry connection for infinitesimal transformations. See "Berry Connection Function" below. Defaults to a function that returns zero.
+
+# Fields (in addition to keyword arguments)
+- `Nk::Int64`: The number of momentum states, derived from `size(k_list, 2)`.
+- `Nc::Int64`: The total number of components, `Nc_hopping * Nc_conserve`.
+- `momentum_coordinate::Bool`: A flag that is automatically set to `true` if `V_int` accepts momentum coordinates (`Tuple{Float64,Float64}`), and `false` if it accepts momentum indices (`Int64`).
+
+# Interaction Function (`V_int`)
+The `V_int` function must accept 8 arguments and return a `ComplexF64`. 
+`V_int(kf1, kf2, ki2, ki1, cf1::Int64, cf2::Int64, ci2::Int64, ci1::Int64)` -> `ComplexF64`.
+Input momenta can have one of two signatures:
+1.  Coordinate-based: `ki` and `kf` are momentum coordinates as `Tuple{<:Real, <:Real}`.
+2.  Index-based: `ki` and `kf` are momentum indices as `Int64`, refering to the momenta in `k_list`.
+The constructor automatically detects which signature is used.
+
+# Berry Connection Function (`FF_inf_angle`)
+The `FF_inf_angle` function must accept 3 arguments `(k_f, k_i, c)` and return a `Float64`. `k_f` and `k_i` are momentum coordinates.
 
 # Orbital Indexing
-The orbital index formula is: i = i_k + Nk * (i_ch-1) + (Nk * Nc_hopping) * (i_cc-1)
-or i = i_k + Nk * (i_c-1), where i_c = i_ch + Nc_hopping * (i_cc-1)
+The single orbital index `i` is mapped from a multi-index `(i_k, i_ch, i_cc)` as follows:
+`i = i_k + Nk * (i_ch - 1) + (Nk * Nc_hopping) * (i_cc - 1)`
+where `i_k` is the momentum index, `i_ch` is the hopping component index, and `i_cc` is the conserved component index.
 
 # Validation
-- `Nc > 0`: Number of components must be positive
-- `Nk*Nc <= 64`: Hilbert space dimension must not exceed 64 bits for MBS64 compatibility
-- `V_int` function must have correct signature: (kf1, kf2, ki2, ki1, cf1, cf2, ci2, ci1) -> ComplexF64
-- `FF_inf_angle` function must have correct signature: (k_f, k_i, c) -> Float64
+- The total number of orbitals (`Nk * Nc`) must not exceed 64.
+- The provided `V_int` and `FF_inf_angle` functions must conform to one of the valid signatures.
 """
 mutable struct EDPara
     # momemta are in integers
@@ -51,9 +65,6 @@ mutable struct EDPara
     momentum_coordinate::Bool
     FF_inf_angle::Function
 
-    """
-    Constructor for EDPara with keyword arguments and validation.
-    """
     function EDPara(; 
         Gk::Tuple{Int64, Int64} = (0, 0), 
         k_list::Matrix{Int64},
