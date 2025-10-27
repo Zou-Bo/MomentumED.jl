@@ -84,7 +84,7 @@ mutable struct EDPara
         @assert Nc > 0 "Number of components must be positive"
         @assert Nk*Nc <= 64 "The Hilbert space dimension must not exceed 64 bits."
         
-        # Validate V_int function signature - accept Tuple{Float64,Float64} or Int64 momentum format
+        # Validate V_int function signature - accept Tuple{<:Real,<:Real} or Int64 momentum format
         try
             x = V_int((0.0,0.0), (0.0,0.0), (0.0,0.0), (0.0,0.0), 1, 1, 1, 1)
             @assert x isa ComplexF64
@@ -96,7 +96,7 @@ mutable struct EDPara
             catch
                 throw(AssertionError("""
                 V_int function must accept 8 arguments:
-                    either (kf1::Tuple{Float64,Float64}, kf2::Tuple{Float64,Float64}, ki1::Tuple{Float64,Float64}, ki2::Tuple{Float64,Float64}, cf1::Int64, cf2::Int64, ci1::Int64, ci2::Int64)
+                    either (kf1::Tuple{<:Real,<:Real}, kf2::Tuple{<:Real,<:Real}, ki1::Tuple{<:Real,<:Real}, ki2::Tuple{<:Real,<:Real}, cf1::Int64, cf2::Int64, ci1::Int64, ci2::Int64)
                     or (kf1::Int64, kf2::Int64, ki1::Int64, ki2::Int64, cf1::Int64, cf2::Int64, ci1::Int64, ci2::Int64)"));
                 and return ComplexF64.
                 Current function fails to give ComplexF64 V_int((0.0,0.0), (0.0,0.0), (0.0,0.0), (0.0,0.0), 1, 1, 1, 1) or V_int(1, 1, 1, 1, 1, 1, 1, 1)
