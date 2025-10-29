@@ -1,8 +1,5 @@
-"""
-Parameters and functions for Landau levels with disk geometry and open boundary condition.
-Using angular momentum representation -> fake "momentum" = (m, 0), Gk = (0, 0)
-"""
-module LLD
+"Parameters and functions for Landau levels with torus geometry and periodic boundary condition"
+module LLT
 
     using ClassicalOrthogonalPolynomials: laguerrel
     using QuadGK
@@ -13,29 +10,35 @@ module LLD
     # Global variables, usually no need to change
     const W0::Float64 = 1.0                     # Interaction strength (energy unit)
     const l::Float64 = 1.0                      # Magnetic Length (length/momentum unit)
-    const Nshell::Int64 = 3                     # number of shells includes in the interaction computation
+    Gl_cutoff::Float64 = 10.0                   # number of shells (|Gl| <= Gl_cutoff) included in the interaction 
+    PRINT_INT_DETAIL::Bool = false              # print the details in calculating the interaction
 
+    # struct ReciprocalLattice
+    #     G1::ComplexF64
+    #     G2::ComplexF64
+    #     exact_G2²_G1²::Real              # exact abs2(G2) / abs2(G1)
+    #     exact_G1dotG2_G1²::Real          # exact G1 ⋅ G2 / abs2(G1)
 
-    struct ReciprocalLattice
-        G1::ComplexF64
-        G2::ComplexF64
-        function ReciprocalLattice(G2_ratio_G1::ComplexF64; G1phase::Float64 = 0.0)
-            # G1 * G2 * sin(angle(G2_ratio_G1)) = G1^2 * abs(G2_ratio_G1) * sin(angle(G2_ratio_G1)) = 2π/l^2
-            G1 = sqrt( 2π/l^2 / abs(G2_ratio_G1) / sin(angle(G2_ratio_G1))) * cis(G1phase)
-            G2 = G1 * G2_ratio_G1
-            new(G1, G2)
-        end
-    end
-    function ReciprocalLattice(s::Symbol)
-        if s == :square
-            return ReciprocalLattice(1.0im)
-        elseif s == :triangular
-            return ReciprocalLattice(cispi(2//3))
-        else
-            throw(AssertionError("Symbol construction can only be :square or :triangular, use ratio construction instead."))
-        end
-    end
-
+    #     function ReciprocalLattice(G2_ratio_G1::Real, cos_angle::Real; G1phase_in_pi::Real = 0.0)
+    #         sin_square = 1.0 - cos_angle^2
+    #         @assert sin_square > 0.0 "abs(cosθ) should < 1.0"
+    #         sin_angle = sqrt(sin_square)
+            
+    #         # G1 * G2 * sin(angle) = G1^2 * abs(ratio) * sin(angle) = 2π/l^2
+    #         G1 = sqrt( 2π/l^2 / abs(G2_ratio_G1) / sin_angle ) * cispi(G1phase_in_pi)
+    #         G2 = G1 * G2_ratio_G1 * (cos_angle + sin_angle*im)
+    #         new(G1, G2, G2_ratio_G1^2, G2_ratio_G1*cos_angle)
+    #     end
+    # end
+    # function ReciprocalLattice(s::Symbol)
+    #     if s == :square
+    #         return ReciprocalLattice(1, 0)
+    #     elseif s == :triangular
+    #         return ReciprocalLattice(1, -1//2)
+    #     else
+    #         throw(AssertionError("Symbol construction is for :square or :triangular, use ratio-angle construction instead."))
+    #     end
+    # end
 
     # a list of component (layer, level, Chern number, other/pseudospin)
     # layer can only be 1 or 2; Chern number can only be 1 or -1
@@ -59,11 +62,11 @@ module LLD
     end
 
 
-    # Cross product for 2D vectors (returns scalar z-component)
-    # Used for computing geometric phases in the magnetic translation algebra
-    function ql_cross(q1::Tuple{<: Real, <: Real}, q2::Tuple{<: Real, <: Real})::Real
-        return q1[1] * q2[2] - q1[2] * q2[1]
-    end
+    # # Cross product for 2D vectors (returns scalar z-component)
+    # # Used for computing geometric phases in the magnetic translation algebra
+    # function ql_cross(q1::Tuple{<: Real, <: Real}, q2::Tuple{<: Real, <: Real})::Real
+    #     return q1[1] * q2[2] - q1[2] * q2[1]
+    # end
 
 
 
@@ -78,34 +81,29 @@ module LLD
         end
     end
 
-
+    
 
     # Shift a momentum to the Brillouin zone
     function BZ(k::Tuple{<: Real, <: Real}, lattice::ReciprocalLattice)::Tuple{<: Real, <: Real}
-        k1 = rem(k[1], 1, RoundNearest)
-        k2 = rem(k[2], 1, RoundNearest)
+        k1 = rem(k[1], 1, RoundDown)
+        k2 = rem(k[2], 1, RoundDown)
 
-        dot_product = (abs2(lattice.G1), real(lattice.G1 * conj(lattice.G2)), abs2(lattice.G2))
+        kdotG1 = k1 + k2 * lattice.exact_G1dotG2_G1²
+        kdotG2 = k1 * lattice.exact_G1dotG2_G1² + k2 * lattice.exact_G2²_G1²
+        distance00 = k1^2 + 2k1*k2 * lattice.exact_G1dotG2_G1² + k2^2 * lattice.exact_G2²_G1²
+        distance01 = distance00 - 2kdotG2 + lattice.exact_G2²_G1²
+        distance10 = distance00 - 2kdotG1 + 1
+        distance11 = distance00 - 2kdotG1 - 2kdotG2 + 1 + 2lattice.exact_G1dotG2_G1² + lattice.exact_G2²_G1²
 
-        @inline function in_BZ(k1, k2, G1, G2)
-            G² = G1^2 * dot_product[1] + 2G1*G2 * dot_product[2] + G2^2 * dot_product[3]
-            kdotG = k1*G1 * dot_product[1] + (k1*G2+k2*G1) * dot_product[2] + k2*G2 * dot_product[3]
-            return -0.5G² <= kdotG < 0.5G²
+        if distance11 <= distance10 && distance11 <= distance01 && distance11 <= distance00
+            return (k1-1, k2-1)
+        elseif distance10 <= distance01 && distance10 <= distance00
+            return (k1-1, k2)
+        elseif distance01 <= distance00
+            return (k1, k2-1)
+        else
+            return (k1, k2)
         end
-
-        for g1 in -1:1, g2 in -1:1
-            kk1 = k1 + g1
-            kk2 = k2 + g2
-
-            abs(kk1) <= 1 &&
-            abs(kk2) <= 1 &&
-            in_BZ(kk1, kk2, 1, -1) && 
-            in_BZ(kk1, kk2, 1, 0) &&
-            in_BZ(kk1, kk2, 1, 1) &&
-            in_BZ(kk1, kk2, 0, 1) && return (kk1, kk2)
-
-        end
-        error("Brillouin Zone fail.")
     end
 
 
@@ -202,7 +200,8 @@ module LLD
     # Momentum inputs are Tuple{Float64, Float64} representing (k1, k2) in ratio of Gk
     mutable struct LandauInteraction <: Function
 
-        const lattice::ReciprocalLattice                  # {G1, G2}
+        const lattice::ReciprocalLattice            # {G1, G2}
+        const Nshell::Int64
 
         D_l::Float64                                # Gate distance / magnetic length (D/l)
         d_l::Float64                                # Interlayer distance / magnetic length (d/l)
@@ -215,7 +214,12 @@ module LLD
         function LandauInteraction(lattice::ReciprocalLattice,
             components::Tuple{Int64, Int64, Int64, Int64}...
         )
-            new(lattice, 10.0, 0.0, [0.0; 0.7;], [1.5; 0.0;], 0.0, ComponentList(components...))
+            Gl_min = sqrt( min(abs2(lattice.G1), abs2(lattice.G2), 
+                abs2(lattice.G1 + lattice.G2), 
+                abs2(lattice.G1 - lattice.G2)) 
+            ) * l
+            Nshell = ceil(Int64, max(2.5, Gl_cutoff / Gl_min))
+            new(lattice, Nshell, 10.0, 0.0, [0.0; 0.7;], [1.5; 0.0;], 0.0, ComponentList(components...))
         end
 
     end
@@ -223,8 +227,7 @@ module LLD
 
 
     function (V_int::LandauInteraction)(
-        kf1::Tuple{<: Real, <: Real}, kf2::Tuple{<: Real, <: Real}, 
-        ki2::Tuple{<: Real, <: Real}, ki1::Tuple{<: Real, <: Real}, 
+        mf1::Int64, mf2::Int64, mi2::Int64, mi1::Int64, 
         cf1::Int64 = 1, cf2::Int64 = 1, ci2::Int64 = 1, ci1::Int64 = 1
     )::ComplexF64
         
@@ -256,15 +259,16 @@ module LLD
 
         V_total = ComplexF64(0.0)
         # Sum over reciprocal lattice vectors for convergence
-        for g1 in -Nshell:Nshell, g2 in -Nshell:Nshell
-            if abs2(g1 * V_int.lattice.G1 + g2 * V_int.lattice.G2) > Nshell
+        PRINT_INT_DETAIL && println("Nshell=$V_int.Nshell, q=$q, G_shift1=$G_shift1, G_shift2=$G_shift2")
+        for g1 in -V_int.Nshell:V_int.Nshell, g2 in -V_int.Nshell:V_int.Nshell
+            if abs2(g1 * V_int.lattice.G1 + g2 * V_int.lattice.G2) > Gl_cutoff^2
                 continue
             end
 
             # Construct the full momentum transfer including reciprocal lattice
             qq1 = q[1] + g1
             qq2 = q[2] + g2
-            ql::ComplexF64 = qq1 * V_int.lattice.G1 + qq2 * V_int.lattice.G2
+            ql::ComplexF64 = (qq1 * V_int.lattice.G1 + qq2 * V_int.lattice.G2) * l
             
             # mixed Coulomb and Haldane interaction
             V  = V_int.mix * V_Haldane(abs(ql); same_layer = (li1==li2), V_intra = V_int.V_intra, V_inter = V_int.V_inter)
@@ -284,6 +288,7 @@ module LLD
 
             sign = ita(g1+G_shift1[1], g2+G_shift1[2]) * ita(g1+G_shift2[1], g2+G_shift2[2])
 
+            PRINT_INT_DETAIL && println("g1,g2=$((g1,g2)), ql=$(abs(ql)), VFF=$(V * F1 * F2), sign=$sign, phase=$phase.")
             V_total += sign * V * F1 * F2 * phase
         end
 
@@ -332,7 +337,7 @@ module LLD
         @assert Gk[1] > 0 && Gk[2] > 0
 
         q_coord = (q1 // Gk[1], q2 // Gk[2])
-        ql = q_coord[1] * para.V_int.lattice.G1 + q_coord[2] * para.V_int.lattice.G2
+        ql = (q_coord[1] * para.V_int.lattice.G1 + q_coord[2] * para.V_int.lattice.G2) * l
         C = cp.Chern[ci]
         F = complex(1.0)
         if form_factor
