@@ -1,5 +1,7 @@
 [deps]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+EDCore = "67ba95b5-0c7c-4a9c-9737-2f4756a96b17"
+MomentumED = "2c2e6bdd-50a7-494a-93d8-6f138df00727"
 
 [compat]
 julia = "1.11"

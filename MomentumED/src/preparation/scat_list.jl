@@ -103,49 +103,26 @@ end
 global PRINT_TWOBODY_SCATTER_PAIRS::Bool = false
 
 """
-    scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para::EDPara;
-                   kshift::Tuple{Float64, Float64} = (0.0, 0.0), output::Bool = false) -> Vector{Scatter{2}}
+    scat_pair_group_coordinate(pair_group, para, shifts) -> Vector{Scatter{2}}
 
-Generate all Scatter terms between momentum pairs with the same total momentum. 
-Use the interaction function that accepts coordinate format momenta.
-Allow input of momentum shift for twisted boundary conditions.
-
-Creates two-body Scatter terms for all possible transitions between momentum pairs
-that conserve total momentum, including all component index combinations.
+Generate all Scatter terms between momentum pairs with the same total momentum.
+This internal function uses an interaction function `V_int` that accepts momentum coordinates.
 
 # Arguments
-- `pair_group::Vector{Tuple{Int64,Int64}}`: List of momentum index pairs with same total momentum
-- `para::EDPara`: Parameter structure containing system configuration
-
-# Keywords
-- `kshift::Tuple{Float64, Float64}=(0.0, 0.0)`: Momentum shift for twisted boundary conditions
+- `pair_group::Vector{Tuple{Int64,Int64}}`: List of momentum index pairs with the same total momentum.
+- `para::EDPara`: Parameter structure containing system configuration.
+- `shifts::Matrix{<:Real}`: A matrix of size `(2, Nc_conserve)` specifying the momentum shifts (twisted boundary conditions) for each conserved component.
 
 # Returns
-- `Vector{Scatter{2}}`: List of two-body Scatter terms for this momentum group
+- `Vector{Scatter{2}}`: A list of two-body `Scatter` terms for this momentum group.
 
 # Details
-- Iterates over all input/output momentum pair combinations within the group
-- Generates all component index combinations for each momentum pair
-- Maps momentum and component indices to global orbital indices
-- Applies normal ordering: `minmax(i1, i2) >= minmax(f1, f2)`
-- Calculates Scatter amplitudes using `int_amp` function with momentum shift
-- Includes both direct and exchange contributions
-- Handles identical orbital pairs with proper exclusion
-
-# Physics
-The Scatter amplitude includes:
-- Direct term: `int_amp(i1, i2, f1, f2, para; kshift=kshift)`
-- Exchange term: `int_amp(i2, i1, f1, f2, para; kshift=kshift)`
-- Total amplitude: `amp = amp_direct - amp_exchange`
-
-# Example
-```julia
-# Get momentum pairs with total momentum (0, 0)
-groups = group_momentum_pairs(para)
-zero_momentum_pairs = groups[(0, 0)]
-# Generate all Scatter terms for this momentum group
-Scatter_terms = scat_pair_group(zero_momentum_pairs, para)
-```
+- Iterates over all input/output momentum pair combinations within the group.
+- Generates all component index combinations for each momentum pair.
+- Maps momentum and component indices to global orbital indices.
+- Applies normal ordering: `minmax(i1, i2) >= minmax(f1, f2)`.
+- Calculates Scatter amplitudes using `para.V_int` with momentum shifts.
+- Includes both direct (`V(f1,f2,i2,i1)`) and exchange (`V(f1,f2,i1,i2)`) contributions.
 """
 function scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para::EDPara;
     shifts::Matrix{T})::Vector{Scatter{2}} where {T <: Real}
@@ -253,49 +230,23 @@ function scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para
 end
 
 """
-    scat_pair_group_index(pair_group::Vector{Tuple{Int64,Int64}}, para::EDPara;
-                   output::Bool = false) -> Vector{Scatter{2}}
+    scat_pair_group_index(pair_group, para) -> Vector{Scatter{2}}
 
-Generate all Scatter terms between momentum pairs with the same total momentum. 
-Use the interaction function that accepts indices of momenta in `para.k_list`.
-No input of momentum shift for twisted boundary conditions; update the `para` instead.
-
-Creates two-body Scatter terms for all possible transitions between momentum pairs
-that conserve total momentum, including all component index combinations.
+Generate all Scatter terms between momentum pairs with the same total momentum.
+This internal function uses an interaction function `V_int` that accepts momentum indices.
 
 # Arguments
-- `pair_group::Vector{Tuple{Int64,Int64}}`: List of momentum index pairs with same total momentum
-- `para::EDPara`: Parameter structure containing system configuration
-
-# Keywords
-- `output::Bool=false`: Print all the Scatter terms (before normal ordering) for debugging purposes
+- `pair_group::Vector{Tuple{Int64,Int64}}`: List of momentum index pairs with the same total momentum.
+- `para::EDPara`: Parameter structure containing system configuration.
 
 # Returns
-- `Vector{Scatter{2}}`: List of two-body Scatter terms for this momentum group
+- `Vector{Scatter{2}}`: A list of two-body `Scatter` terms for this momentum group.
 
 # Details
-- Iterates over all input/output momentum pair combinations within the group
-- Generates all component index combinations for each momentum pair
-- Maps momentum and component indices to global orbital indices
-- Applies normal ordering: `minmax(i1, i2) >= minmax(f1, f2)`
-- Calculates Scatter amplitudes using `int_amp` function with momentum shift
-- Includes both direct and exchange contributions
-- Handles identical orbital pairs with proper exclusion
-
-# Physics
-The Scatter amplitude includes:
-- Direct term: `int_amp(i1, i2, f1, f2, para; kshift=kshift)`
-- Exchange term: `int_amp(i2, i1, f1, f2, para; kshift=kshift)`
-- Total amplitude: `amp = amp_direct - amp_exchange`
-
-# Example
-```julia
-# Get momentum pairs with total momentum (0, 0)
-groups = group_momentum_pairs(para)
-zero_momentum_pairs = groups[(0, 0)]
-# Generate all Scatter terms for this momentum group
-Scatter_terms = scat_pair_group(zero_momentum_pairs, para)
-```
+- This function is used when `para.V_int` expects integer indices instead of coordinates.
+- It does not handle momentum shifts (twisted boundary conditions); the `para` object itself should be updated if necessary.
+- Iterates over all input/output momentum pair combinations within the group.
+- Applies normal ordering and calculates direct and exchange amplitudes.
 """
 function scat_pair_group_index(pair_group::Vector{Tuple{Int64,Int64}}, para::EDPara;
     )::Vector{Scatter{2}}
@@ -362,38 +313,36 @@ function scat_pair_group_index(pair_group::Vector{Tuple{Int64,Int64}}, para::EDP
 end
 
 """
-    ED_sortedScatterList_twobody(para::EDPara; kshift::Tuple{Float64, Float64} = (0.0, 0.0)) -> Vector{Scatter{2}}
+    ED_sortedScatterList_twobody(para::EDPara; kshift=nothing) -> Vector{Scatter{2}}
 
-Generate sorted lists of two-body Scatter terms from the parameters.
+Generate a sorted list of two-body `Scatter` terms from the interaction potential.
 
-Uses the interaction function from EDPara.V_int to calculate Scatter amplitudes
-for all possible two-body processes, grouped by total momentum conservation.
-It recognizes which momentum input format is accepted by `para.V_int` function.
-If the momentum index is used, no input of momentum shift for twisted boundary conditions is allowed.
+This function orchestrates the generation of all two-body scattering terms. It first groups momentum pairs by their total momentum to ensure conservation, then calls the appropriate internal function (`scat_pair_group_coordinate` or `scat_pair_group_index`) based on the signature of the interaction potential `para.V_int`.
 
 # Arguments
-- `para::EDPara`: Parameter structure containing system configuration
+- `para::EDPara`: The parameter structure containing system configuration, including the `V_int` function.
 
 # Keywords
-- `kshift=nothing`: Momentum shift for twisted boundary conditions
+- `kshift=nothing`: Specifies a momentum shift for twisted boundary conditions. This is only applicable if `para.V_int` accepts momentum coordinates. The value can be:
+    - `nothing` (default): No shift.
+    - `Tuple{Real, Real}`: A uniform shift `(kx, ky)` applied to all conserved components.
+    - `Vector{Tuple{Real, Real}}`: A specific shift for each conserved component.
+    - `Matrix{Real}`: A `2 x Nc_conserve` matrix specifying the shift for each component.
 
 # Returns
-- `Vector{Scatter{2}}`: Sorted list of two-body Scatter terms
+- `Vector{Scatter{2}}`: A sorted and merged list of all unique two-body `Scatter` terms.
 
 # Details
-- Groups momentum pairs by total momentum for efficiency
-- Generates all component index combinations for each momentum pair
-- Applies normal ordering: `minmax(i1, i2) >= minmax(f1, f2)`
-- Includes both direct and exchange contributions: `amp = amp_direct - amp_exchange`
-- Uses momentum shift in interaction calculations: `(k_list .+ kshift) ./ Gk`
-- Applies `sort_merge_scatlist` to eliminate duplicates and sort terms
+- Automatically detects whether `para.V_int` uses momentum coordinates or indices.
+- If using indices, `kshift` is ignored.
+- The final list is processed by `sort_merge_scatlist` to eliminate duplicates and sort the terms.
 
 # Example
 ```julia
 para = EDPara(k_list=k_list, Gk=(3, 5), V_int=V_int)
-# Without momentum shift
+# Generate with no momentum shift
 Scatter2 = ED_sortedScatterList_twobody(para)
-# With twisted boundary conditions
+# Generate with a uniform twisted boundary condition
 Scatter2_shifted = ED_sortedScatterList_twobody(para; kshift=(0.1, 0.1))
 ```
 """

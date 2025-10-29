@@ -1,4 +1,3 @@
-
 using LinearAlgebra
 
 """
@@ -16,18 +15,18 @@ Represents a many-body operator as a list of lists of `Scatter` terms.
 In the construction of operators, all `Scatter` terms are automatically reorganized by their body number.
 Terms of the same scatter-in and -out states are merged.
 Terms of the same body number are sorted
+
+# Constructor
+    MBOperator(scats::Vector{<: Scatter}...; upper_hermitian::Bool)
+    MBOperator(scats::Vector{Vector{<:Scatter}}; upper_hermitian::Bool)
+
+Constructs an `MBOperator` from input `Scatter` terms.
+The `upper_hermitian` flag determines how scattering terms are sorted and merged.
 """
 struct MBOperator
     scats::Vector{Vector{<:Scatter}}
     upper_hermitian::Bool
 
-    """
-        MBOperator(scats::Vector{<: Scatter}...; upper_hermitian::Bool)
-        MBOperator(scats::Vector{Vector{<:Scatter}}; upper_hermitian::Bool)
-
-    Constructs an `MBOperator` from input `Scatter` terms.
-    The `upper_hermitian` flag determines how scattering terms are sorted and merged.
-    """
     function MBOperator(scats::Vector{Vector{<:Scatter}}; upper_hermitian::Bool)
         sort_merge_scats = sort_merge_scatlist(scats; 
             check_normal = !upper_hermitian, 

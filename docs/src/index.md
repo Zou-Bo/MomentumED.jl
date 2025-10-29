@@ -1,51 +1,73 @@
 # MomentumED.jl
 
 [![CI](https://github.com/Zou-Bo/MomentumED.jl/workflows/CI/badge.svg)](https://github.com/Zou-Bo/MomentumED.jl/actions/workflows/CI.yml)
-[![Documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://Zou-Bo.github.io/MomentumED.jl/stable)
-[![Documentation](https://img.shields.io/badge/docs-dev-blue.svg)](https://Zou-Bo.github.io/MomentumED.jl/dev)
+<!-- [![Documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://Zou-Bo.github.io/MomentumED.jl/stable)
+[![Documentation](https://img.shields.io/badge/docs-dev-blue.svg)](https://Zou-Bo.github.io/MomentumED.jl/dev) -->
 [![Code Style](https://img.shields.io/badge/code%20style-blue-4495d1.svg)](https://github.com/JuliaFormatter/JuliaFormatter.jl)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-A Julia package for exact diagonalization in momentum basis.
+A Julia package for momentum-conserved exact diagonalization of quantum many-body systems.
 
 ## Overview
 
-This package implements exact diagonalization for quantum systems in momentum basis. 
-(Only two-dimensional systems now.)
-It provides standard solving functions for the Hermitian Hamiltonians that are block-diagonalized by total momentum.
-The Hamiltonian consists of one-body and two-body terms. The two-body terms are generated from an interaction function that are symmetric for the two electrons. 
-Using KrylovKit for sparse-matrix or linear-map eigenvalue problems.
+This project provides a powerful and flexible framework for exact diagonalization (ED) of quantum many-body systems, with a special focus on 2D systems where momentum is a conserved quantity. The project is organized into two main packages:
+
+- **`EDCore.jl`**: A lightweight, dependency-free core library that provides the fundamental building blocks for generic ED calculations. It defines abstract representations for many-body states (`MBS64`, `MBS64Vector`), operators (`Scatter`, `MBOperator`), and Hilbert subspaces (`HilbertSubspace`).
+- **`MomentumED.jl`**: A high-level application package that uses `EDCore.jl` to implement specialized tools for momentum-conserved systems. It provides functions to set up system parameters, generate momentum-block-diagonal Hamiltonians, solve for eigenstates, and perform post-calculation analysis. It is made with the assumptions that the interaction is symmetric in switching the two vertices and that the Hamiltonian is hermitian and momentum-conserving; if you are doing a specific problem that fails to fit in these assumptions, consider making your dedicated initiating process using `EDCore.jl`.
+
+`MomentumED.jl` uses `KrylovKit.jl` to diagonalize the Hamiltonian and find the eigenvalues and eigenvectors.
+
+`MomentumED.jl` also provides many-body state analysis methods to compute one-body reduced density matrix, many-body connection and many-body Chern number (NTW invariant), and particle-/orbital- reduced density matrix, entanglement entropy.
 
 ## Features
 
-### Low-level Structs: Implementations for general Hilbert space basis and N-body Scatter terms
-- **Bit-based State Representation**: `MBS64{bits}` type for `bits`-dimensional one-body Hilbert space basis using bit encoding (at most 64-dimensional)
-- **Scatter Formalism**: Hamiltonian (or any operator) construction using N-body `Scatter` terms
-- **State and Operator**: Easy manipulations for many-body states in `MBS64Vector` and operators in `MBOperator`
-### High-level Functionalities: Standard solving process for a momentum-conserving Hermitian Hamiltonian
-- **Momentum Block Division**: Separates Hilbert space by total momentum quantum numbers
-- **Multi-component Systems**: Support for conserved and non-conserved component indices orthogonal to momentum index
-- **KrylovKit.jl Integration**: Sparse matrix diagonalization using KrylovKit's eigsolve function
-### Many-Body State Analysis: 
-- **One-body Reduced Density**: Computing one-body reduced density matrix of an eigenvector
-- **Expectation Value**: Construct any `MBOperator` and its expectation value in an `MBS64Vector`
-- **Entanglement Calculation**: Computing entanglement entropy of an eigenvector (in development)
-- **Berry Connection**: Many-body Berry connection calculation for topological analysis
+### `EDCore.jl` (Core Library)
+
+- **Bit-based State Representation**: `MBS64{bits}` for efficient representation of many-body states in up to 64-orbital systems.
+- **Generic Operator Algebra**: `Scatter{N}` and `MBOperator` types for constructing and manipulating N-body operators.
+- **Abstract Hilbert Space**: `HilbertSubspace` and `MBS64Vector` to manage basis states and eigenvectors.
+
+### `MomentumED.jl` (High-Level Application)
+
+- **Momentum-Space ED**: Tools to build and solve Hamiltonians that are block-diagonal in total momentum.
+- **System Setup**: The `EDPara` struct to easily configure system parameters like the k-list, interaction potential, and component structure.
+- **Automated Basis Generation**: `ED_momentum_subspaces` function to automatically generate basis states for each momentum sector.
+- **Hamiltonian Construction**: `ED_sortedScatterList_...` functions to generate one- and two-body operators from the system parameters.
+- **Eigensolver**: A simple `EDsolve` interface that wraps `KrylovKit.jl` for efficient sparse diagonalization.
+- **Many-Body Analysis**: Built-in functions for calculating one-body reduced density matrices, particle/orbital entanglement spectrum, and many-body Berry connection.
 
 ## Installation
 
-This package is not registered currently. Install it from GitHub:
+This project contains two packages: `EDCore` and `MomentumED`. Since they are not yet registered and `MomentumED` depends on the local version of `EDCore`, the installation process requires you to clone the repository first.
 
-```julia
-using Pkg
-Pkg.add(url="https://github.com/Zou-Bo/MomentumED.jl")
-```
+1.  **Clone the repository:**
+    ```sh
+    git clone https://github.com/Zou-Bo/MomentumED.jl
+    cd MomentumED.jl
+    ```
+
+2.  **Install the local packages:**
+    Start Julia in the `MomentumED.jl` directory. Press `]` to enter the package manager, then run:
+    ```julia
+    pkg> dev ./EDCore
+    pkg> dev ./MomentumED
+    ```
+    This will install the packages from their local subdirectories, allowing Julia to correctly resolve the dependency between them.
+
+Once the packages are registered in the Julia General Registry, you will be able to install them simply with `Pkg.add("MomentumED")`.
+
 
 ## Structure
 
-Low-level structs: "/src/types/"
-High-level functionalities: "/src/preparation/", "/src/method/", /src/MomentumED.jl"
-Many-Body State Analysis: "/src/analysis/"
+The project is organized into two main packages:
+
+- **`EDCore/`**: The core library providing generic, low-level ED tools.
+    - `EDCore/src/types/`: Defines core data structures like `MBS64`, `MBS64Vector`, `Scatter`, `MBOperator`, and `HilbertSubspace`.
+    - `EDCore/src/EDCore.jl`: Implements the core functionalities and operator algebra.
+- **`MomentumED/`**: The high-level package for momentum-space ED.
+    - `MomentumED/src/preparation/`: Functions for setting up calculations (parameter initialization, basis generation).
+    - `MomentumED/src/method/`: Hamiltonian construction and eigensolving methods.
+    - `MomentumED/src/analysis/`: Functions for post-calculation analysis (RDM, Berry connection, etc.).
 
 
 ## Usage
@@ -62,12 +84,12 @@ Gk = (3, 5) # momenta mod Gk are conserved
 
 # Example system with one compotent
 Nc_hopping = 1 # default number if not being configured explcitly
-Nc_conserved = 1 # default number if not being configured explcitly
+Nc_conserve = 1 # default number if not being configured explcitly
 
 # Define one-body Hamiltonian (4-dim array)
 H0 = ComplexF64[ #= Your Hamiltonian elements here =# 
   cospi(2 * k_list[1, k] / Gk[1]) + cospi(2 * k_list[2, k] / Gk[2]) # Simple band dispersion
-  for ch_out in 1:Nc_hopping, ch_in in 1:Nc_hopping, cc in 1:Nc_conserved, k in axes(k_list, 2)
+  for ch_out in 1:Nc_hopping, ch_in in 1:Nc_hopping, cc in 1:Nc_conserve, k in axes(k_list, 2)
 ]
 
 # Define interaction function, giving the amplitude before c†_{f1} c†_{f2} c_{i2} c_{i1}
@@ -82,46 +104,90 @@ end
 # Create parameter structure with keywords
 para = EDPara(k_list=k_list, Gk=Gk, Nc_hopping=Nc_hopping, Nc_conserve=Nc_conserve, H_onebody=H0, V_int=V_int)
 
-# Generate many-body Hilbert space of 4 electrons
-mbs_list = ED_mbslist(para, (4,))
-
-# Divide into subspaces (momentum blocks)
-blocks, block_k1, block_k2, k0number = ED_momentum_block_division(para, mbs_list)
+# Generate momentum subspaces for a system of 4 electrons in the first (and only) conserved component
+subspaces, subspace_k1, subspace_k2 = ED_momentum_subspaces(para, (4,))
 
 # Generate Scatter lists
 scat_list1 = ED_sortedScatterList_onebody(para)
 scat_list2 = ED_sortedScatterList_twobody(para)
 
-# Solve first momentum block with 5 lowest eigenenergies
-energies, eigenvectors = EDsolve(blocks[1], scat_list1, scat_list2, 5)
+# Solve the first momentum block for the 5 lowest eigenenergies
+energies, eigenvectors = EDsolve(subspaces[1], scat_list1, scat_list2; N=5)
 
-println("Total momentum: (", block_k1[1], ", ",  block_k2[1],")  Ground state energy: ", energies[1])
+println("Total momentum: (", subspace_k1[1], ", ",  subspace_k2[1],")  Ground state energy: ", energies[1])
 ```
 
+## API Reference
 
-## Core Components
+The public API is organized into several categories, reflecting the typical workflow.
 
-- **EDPara**: Parameter container storing k-mesh, interaction functions, and component mappings
-- **MBS64{bits}**: Many-body state representation with bit-based occupation encoding (up to 64 orbitals)
-- **Scatter{N}**: Hamiltonian term representation for efficient sparse matrix construction
-- **KrylovKit Integration**: Uses eigsolve for sparse eigenvalue problems with configurable convergence
+### Core Types (from `EDCore.jl`)
 
-## Dependencies
+- **`MBS64{bits}`**: Represents a many-body state using bit encoding.
+- **`HilbertSubspace`**: A container for a list of basis states (`MBS64`) that form a subspace.
+- **`MBS64Vector`**: Represents an eigenvector, associating a raw vector with its `HilbertSubspace`.
+- **`Scatter{N}`**: Represents an N-body operator term.
+- **`MBOperator`**: A collection of `Scatter` terms that defines a full many-body operator like the Hamiltonian.
 
-- **LinearAlgebra, SparseArrays**: Core linear algebra functionality
-- **Combinatorics**: Combinatorial utilities for state generation
-- **KrylovKit**: Sparse matrix eigenvalue solvers
+### System Preparation
+
+- **`EDPara`**: A struct that holds all parameters for a calculation (k-list, interaction functions, etc.).
+- **`ED_momentum_subspaces`**: Generates the basis states, automatically partitioning them into `HilbertSubspace` objects based on total momentum.
+- **`ED_sortedScatterList_onebody`**: Creates the one-body part of the Hamiltonian as a list of `Scatter{1}` terms.
+- **`ED_sortedScatterList_twobody`**: Creates the two-body part of the Hamiltonian as a list of `Scatter{2}` terms.
+
+### Eigensolver
+
+- **`EDsolve`**: The main function to find the lowest eigenvalues and eigenvectors of a Hamiltonian within a given subspace. Supports both sparse matrix and matrix-free (LinearMap) methods.
+
+### Analysis
+
+- **Entanglement Spectrum**:
+    - `PES_1rdm`, `PES_MomtBlocks`, `PES_MomtBlock_rdm`: Functions for calculating the particle entanglement spectrum.
+    - `OES_NumMomtBlocks`, `OES_NumMomtBlock_coef`: Functions for calculating the orbital entanglement spectrum.
+- **Topological Properties**:
+    - `ED_connection_step`, `ED_connection_gaugefixing!`: Functions for calculating the many-body Berry connection, used to find topological invariants like the Chern number.
+- **Expectation Values**:
+    - `ED_bracket`, `ED_bracket_threaded`: Low-level functions to compute the expectation value `<ψ₁|O|ψ₂>`.
+
+
+### Multi-Component Systems
+
+The package supports systems with multiple components:
+- Conserved components
+- Non-conserved components (also called hopping components in the code because usually there're hopping terms between them)
+
+Using conserved components allows you to assign the particle number of each component when generating many-body state(mbs) list. The package will not check if the particle number is really conserved when generating Scatter list from given one-body term and two-body interaction. However, if a Scatter term scatters a mbs state outside the provided mbs list, the EDsolve() function will throw a "NonConserved" error.
+
+## Performance
+
+The package is optimized for performance:
+- **Memory efficiency**: Bit encoding and sparse matrix methods
+- **Parallel processing**: Multi-threaded when generating sparse Hamiltonian matrix.
+- **Block diagonalization**: Significantly reduced matrix sizes
+
+Typical performance explodes exponentially with system size and particle number.
+
+## Examples
+
+The package includes example notebooks in the "/examples/" folder.
 
 ## Documentation
 
-- **[API Reference](api.md)**: Function signatures and usage
-- **[Examples](examples.md)**: Example notebooks and tutorials
+Comprehensive documentation is available at:
+- [Documentation](https://Zou-Bo.github.io/MomentumED.jl/) (In construction)
+
+## Contribution
+
+Let me know if you have any problems in using the package or find bugs.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file.
+This package is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Citation
+
+If you use this package in your research, you might cite:
 
 ```bibtex
 @software{MomentumED.jl,
@@ -133,3 +199,10 @@ MIT License - see [LICENSE](LICENSE) file.
   howpublished = {\url{https://github.com/Zou-Bo/MomentumED.jl}}
 }
 ```
+
+---
+
+This documentation is organized into two main parts, corresponding to the two packages in this repository:
+
+- **`EDCore.jl`**: Contains the documentation for the low-level, generic building blocks of the exact diagonalization framework. This includes tutorials, manuals, and API references for the core data structures and their algebra.
+- **`MomentumED.jl`**: Contains the documentation for the high-level functionalities specific to momentum-conserved systems. This section will provide guides and API references for setting up calculations, solving for eigenstates, and performing analyses within the momentum-space formalism.

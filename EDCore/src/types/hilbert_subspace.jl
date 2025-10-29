@@ -50,6 +50,8 @@ Optionally includes a dictionary for efficient state-to-index lookup.
 - `list::Vector{MBS64{bits}}`: A sorted list of MBS64 states forming the basis of the subspace.
 - `dict::Dict{MBS64{bits}, <: Integer}`: An optional dictionary mapping MBS64 states to their 1-based indices in `list`.
 
+Notice that dict takes lots of memory and can only accelerate searching in very very large subspace.
+
 # Constructors
     HilbertSubspace(sorted_list::Vector{MBS64{bits}}; dict::Bool = false, index_type::Type = Int64) where {bits}
 

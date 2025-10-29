@@ -6,9 +6,14 @@ using Pkg
 # Activate the docs project environment first
 Pkg.activate(@__DIR__)
 
-# Add the parent directory as a local package dependency
-# This allows Documenter to access the MomentumED module
-Pkg.develop(path=joinpath(@__DIR__, ".."))
+# Define the paths to the local packages
+pathToEDCore = joinpath(@__DIR__, "..", "EDCore")
+pathToMomentumED = joinpath(@__DIR__, "..", "MomentumED")
+
+# Add the local packages using Pkg.develop
+# This allows Documenter to find the modules and their docstrings
+Pkg.develop(path=pathToEDCore)
+Pkg.develop(path=pathToMomentumED)
 
 # Instantiate the docs project dependencies
 Pkg.instantiate()

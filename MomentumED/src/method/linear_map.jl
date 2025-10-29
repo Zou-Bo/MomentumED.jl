@@ -133,7 +133,7 @@ end
     krylov_map_solve(H::SparseMatrixCSC{ComplexF64, Int64}, N_eigen::Int64=6; 
         converge_warning::Bool=false, krylovkit_kwargs...) -> (vals, vecs)
 
-Solve the sparse Hamiltonian matrix using KrylovKit's eigsolve function for the lowest n eigenvalues and eigenvectors.
+Solve the sparse Hamiltonian matrix using KrylovKit's eigsolve function for the lowest `N_eigen` eigenvalues and eigenvectors.
 
 # Arguments
 - `H::SparseMatrixCSC{Complex{eltype}, idtype}`: Sparse Hamiltonian matrix to diagonalize
@@ -152,7 +152,7 @@ Solve the sparse Hamiltonian matrix using KrylovKit's eigsolve function for the 
 # Examples
 ```julia
 # Solve for 3 lowest eigenstates
-vals, vecs, info = matrix_solve(H_matrix, 3)
+vals, vecs, info = krylov_map_solve(H_map, 3)
 println("Ground state energy: ", vals[1])
 ```
 

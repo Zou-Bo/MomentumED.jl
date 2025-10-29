@@ -52,42 +52,54 @@ public PRINT_TWOBODY_SCATTER_PAIRS
 
 
 """
-    EDsolve(
-        subspace::HilbertSubspace, 
-        sorted_scat_lists::Vector{<: Scatter}...;
-        N::Int64 = 6, showtime = false, method = :sparse,
-        element_type::Type = Float64, index_type::Type = Int64, 
-        min_sparse_dim::Int64 = 100, max_dense_dim::Int64 = 200,
-        krylovkit_kwargs...) -> (vals, vecs)
+    EDsolve(subspace::HilbertSubspace, hamiltonian; 
+        kwargs...) -> (energies::Vector, vectors::Vector{MBS64Vector})
 
-Main interface function for exact diagonalization of momentum-conserved quantum systems.
-Constructs the sparse Hamiltonian matrix from Scatter lists and diagonalizes it.
+Main exact diagonalization solver for momentum-conserved quantum systems.
+
+This function finds the lowest eigenvalues and eigenvectors of a Hamiltonian within a given momentum subspace. It supports multiple methods for diagonalization and can accept the Hamiltonian in two formats.
 
 # Arguments
-- `subspace::HilbertSubspace`: Sorted list of many-body states in the momentum block
-- `sorted_scat_list::Vector{<: Scatter}`: Sorted Scatter terms (one-body, two-body, etc.)
-- `N_eigen::Int64=6`: Number of eigenvalues/eigenvectors to compute (default: 6)
+- `subspace::HilbertSubspace`: The Hilbert subspace for a specific momentum block, containing the basis states.
+- `hamiltonian`: The Hamiltonian to be diagonalized. It can be provided in two forms:
+    1. As a series of sorted `Vector{<:Scatter}` arguments (e.g., `EDsolve(subspace, scat1, scat2)`). This form is used for matrix-based methods.
+    2. As a single `MBOperator` object (e.g., `EDsolve(subspace, H_operator)`). This form is required for the matrix-free `:map` method.
 
-# Keywords
-- `showtime::Bool=false`: Whether to print timing information for matrix construction and diagonalization
-- `krylovkit_kwargs...`: Additional keyword arguments to pass to KrylovKit.eigsolve
-
+# Keyword Arguments
+- `N::Int64 = 6`: The number of eigenvalues/eigenvectors to compute.
+- `method::Symbol = :sparse`: The diagonalization method. Options are:
+    - `:sparse`: (Default) Constructs the Hamiltonian as a sparse matrix. Good for most cases.
+    - `:dense`: Constructs a dense matrix. Can be faster for very small systems.
+    - `:map`: Uses a matrix-free `LinearMap` approach. This is the most memory-efficient method for very large systems and requires the `hamiltonian` to be an `MBOperator`.
+% - `element_type::Type = Float64`: The element type for the Hamiltonian matrix (for `:sparse`/:`dense`).
+% - `index_type::Type = Int64`: The integer type for the sparse matrix indices (for `:sparse`).
+- `min_sparse_dim::Int64 = 100`: If `method` is `:sparse` but the dimension is smaller than this, it will automatically switch to `:dense`.
+- `max_dense_dim::Int64 = 200`: If `method` is `:dense` but the dimension is larger than this, it will automatically switch to `:sparse`.
+- `ishermitian::Bool = true`: Specifies if the Hamiltonian is Hermitian. This is passed to the eigensolver for optimization.
+- `showtime::Bool = false`: If `true`, prints the time taken for matrix construction and diagonalization.
+- `krylovkit_kwargs...`: Additional keyword arguments passed directly to `KrylovKit.eigsolve`.
 
 # Returns
-- `vals::Vector{Float64}`: Eigenvalues (energies) in ascending order
-- `vecs::Vector{Vector{ComplexF64}}`: Corresponding eigenvectors
+- `energies::Vector`: A vector containing the `N` lowest eigenvalues.
+- `vectors::Vector{MBS64Vector}`: A vector of the corresponding eigenvectors, wrapped in the `MBS64Vector` type.
 
 # Examples
-```julia
-# Create basis and Scatter lists for a 2-site system
-basis = ED_mbslist(para, (2,))
-blocks, _, _, _ = ED_momentum_block_division(para, basis)
-Scatter1 = ED_sortedScatterList_onebody(para)
-Scatter2 = ED_sortedScatterList_twobody(para)
 
-# Solve for ground state and first excited state
-energies, wavefunctions = EDsolve(blocks[1], Scatter1, Scatter2; N=1)
-println("Ground state energy: ", energies[1])
+**1. Using Scatter Lists (Sparse Method):**
+```julia
+subspaces, _, _ = ED_momentum_subspaces(para, (1,1))
+scat1 = ED_sortedScatterList_onebody(para)
+scat2 = ED_sortedScatterList_twobody(para)
+
+# Find the 2 lowest energy states
+energies, vecs = EDsolve(subspaces[1], scat1, scat2; N=2, method=:sparse)
+```
+
+**2. Using MBOperator (Linear Map Method):**
+```julia
+H_op = MBOperator(scat1, scat2)
+# Find the 2 lowest energy states using the matrix-free approach
+energies, vecs = EDsolve(subspaces[1], H_op; N=2, method=:map)
 ```
 """
 function EDsolve(subspace::HilbertSubspace{bits}, sorted_scat_lists::Vector{<: Scatter}...;

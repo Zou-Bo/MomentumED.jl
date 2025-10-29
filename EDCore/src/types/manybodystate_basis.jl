@@ -7,10 +7,10 @@ Each bit represents the occupation of an orbital (1 = occupied, 0 = empty).
 The `bits` parameter specifies how many orbitals are physically meaningful.
 
 # Fields
-- `state::UInt64`: The bit representation of occupied orbitals
+- `n::UInt64`: The bit representation of occupied orbitals
 
 # Constructor
-    MBS64{bits}(state::UInt64) where {bits}
+    MBS64{bits}(state::UInt64)
 
 Creates a new MBS64 with the given bit state, validating that the state
 fits within the specified number of bits.
@@ -46,9 +46,9 @@ function Base.show(io::IO, mbs::MBS64{bits}) where bits
 end
 
 """
-    get_bits(mbs::MBS64{bits})
+    get_bits(mbs::MBS64{bits}) = bits
 
-Return the bits of the type of input mbs state.
+Return the number of physical bits of the type of input mbs state.
 """
 function get_bits(::MBS64{bits})::Integer where{bits}
     bits
@@ -102,17 +102,23 @@ Base.isless(mbs1::MBS64{b}, mbs2::MBS64{b}) where {b} = mbs1.n < mbs2.n
 
 
 """
-    ==(mbs1::MBS64{b}, mbs2::MBS64{b}) where {b}
+    ==(mbs1::MBS64{b1}, mbs2::MBS64{b2}) where {b1, b2}
+    ==(int::Integer, mbs2::MBS64{b}) where {b}
+    ==(mbs1::MBS64{b}, int::Integer) where {b}
 
 Check equality of two MBS64 states. Different bit sizes are never equal.
 """
-function ==(mbs1::MBS64{b}, mbs2::MBS64{b}) where {b}
-    mbs1.n == mbs2.n
+function ==(mbs1::MBS64{b1}, mbs2::MBS64{b2}) where {b1, b2}
+    b1 == b2 && mbs1.n == mbs2.n
 end
-
 ==(mbs::MBS64, i::Integer) = mbs.n == i
 ==(i::Integer, mbs::MBS64) = mbs.n == i
 
+"""
+    hash(mbs::MBS64) = hash(mbs.n)
+
+Computes the hash of a many-body state, which is equivalent to the hash of its underlying integer representation `mbs.n`.
+"""
 hash(mbs::MBS64) = hash(mbs.n)
 
 # Occupation and state manipulation
@@ -187,7 +193,8 @@ end
 MBS64(bits, occ_list, mask) = MBS64(bits, mask[occ_list])
 
 """
-    Input a MBS64{bits} mask; return its complete mask.
+(need more)
+Input a MBS64{bits} mask; return its complete mask.
 """
 function MBS64_complete(mask::MBS64{bits})::MBS64{bits} where {bits}
     MBS64{bits}(UInt64(1) << bits -1 - mask.n)

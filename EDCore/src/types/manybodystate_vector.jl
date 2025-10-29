@@ -1,4 +1,3 @@
-
 using LinearAlgebra
 
 """
@@ -10,18 +9,18 @@ using LinearAlgebra
 A vector of components bounded to a `HilbertSubspace` that defines the space and basis.
 It represents a general many-body state in the basis of the given `MBS64{bits}` list.
 
-To save the memory usage, all `MBS64Vector`s in the same subspace should use the same `HilbertSubspace`.
+To save the memory usage, use the same `HilbertSubspace` for all `MBS64Vector`s in the same subspace.
+
+Constructor:
+    MBS64Vector(vec::Vector{Complex{F}}, space::HilbertSubspace{bits}) where {bits, F <: AbstractFloat}
+
+Constructs an `MBS64Vector` from a vector of complex coefficients and a `HilbertSubspace`.
+The length of the vector must match the dimension of the Hilbert subspace.
 """
 struct MBS64Vector{bits, F <: AbstractFloat}
     vec::Vector{Complex{F}}
     space::HilbertSubspace{bits}
 
-    """
-        MBS64Vector(vec::Vector{Complex{F}}, space::HilbertSubspace{bits}) where {bits, F <: AbstractFloat}
-
-    Constructs an `MBS64Vector` from a vector of complex coefficients and a `HilbertSubspace`.
-    The length of the vector must match the dimension of the Hilbert subspace.
-    """
     function MBS64Vector(vec::Vector{Complex{F}}, space::HilbertSubspace{bits}) where {bits, F <: AbstractFloat}
         @boundscheck @assert length(vec) == length(space) "vector length mismatches Hilbert space dimension."
         new{bits, F}(vec, space)
@@ -75,6 +74,7 @@ end
 
 """
     dot(mbs_bra::MBS64Vector{bits, F}, mbs_ket::MBS64Vector{bits, F})::Complex{F}
+    mbs_bra ⋅ mbs_ket
 
 Computes the dot product between two `MBS64Vector`s.
 Both vectors must belong to the same Hilbert subspace.

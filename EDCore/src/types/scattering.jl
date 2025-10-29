@@ -1,8 +1,6 @@
 # to-do list:
 # Scattering{F <: AbstractFloat, N}
 
-
-# using Combinatorics
 using LinearAlgebra
 
 """
@@ -12,15 +10,6 @@ using LinearAlgebra
     - Amp::ComplexF64: Scatter amplitude
     - out::NTuple{N, Int64}: Output orbital indices (creation operators)
     - in::NTuple{N, Int64}: Input orbital indices (annihilation operators)
-    
-    Example:
-    ```julia
-    # One-body Scatter: V * c†_i c_j
-    s1 = Scatter(V, i, j)
-    
-    # Two-body Scatter: V * c†_i1 c†_i2 c_j2 c_j1  
-    s2 = Scatter(V, i1, i2, j2, j1)
-    ```
 """
 struct Scatter{N}
     Amp::ComplexF64
@@ -31,7 +20,9 @@ end
 """
     Scatter(V, outin::Int64...)
 
-Construct a Scatter term from amplitude and orbital indices.
+Construct a Scatter term from amplitude and orbital indices. 
+However, it's recommemded to use `NormalScatter` for construction.
+
 
 The constructor expects an even number of indices, where the first half are output
 indices (creation operators) and the second half are input indices (annihilation
@@ -71,13 +62,19 @@ end
     NormalScatter(V::ComplexF64, ij::Int64...; upper_hermitian::Bool = false)::Scatter
 
 Generate a scattering term with normal ordering. Optimized for N=1,2.
+
 term: V * c†_i1 c†_i2 ... c†_iN c_jN ... c_j2 c_j1 (j-in, i-out )
-(1) j1 > j2 > ... > jN (no equality)
-(2) i1 > i2 > ... > iN (no equality)
-Hermitian Upper Triangular:
-(3) j1 > i1 or j1 = i1 && j2 > i2 or j1,j2 = i1,i2 && j3 > i3 or ... or j1,...,jN-1 = i1,...,iN-1 && jN >= iN
-or equlivantly in Julia's grammer
+- (1) j1 > j2 > ... > jN (no equality)
+- (2) i1 > i2 > ... > iN (no equality)
+- Hermitian Upper Triangular:\n
+(3) j1 > i1 or j1 = i1 && j2 > i2 or j1,j2 = i1,i2 && j3 > i3 or ... or j1,...,jN-1 = i1,...,iN-1 && jN >= iN\n
+or equlivently in Julia's grammer\n
 (3') (j1,...,jN) >= (i1,...,iN)
+
+Example:
+```julia
+NormalScatter(1.0+0.0im, 5, 3) == NormalScatter(-1.0+0.0im, 3, 5)
+```
 """
 function NormalScatter(V::ComplexF64, ij::Int64...; upper_hermitian::Bool = false)::Scatter
     @assert iseven(length(ij)) "number conservation requires annihilated and created indices number being even"
@@ -164,37 +161,106 @@ function NormalScatter(V::ComplexF64, i1::Int64, i2::Int64, j2::Int64, j1::Int64
 
     return Scatter{2}(V, (i1, i2), (j1, j2))
 end
+"""
+docstring needed
+"""
 isnormal(x::Scatter)::Bool = issorted(x.in; rev=true) && issorted(x.out; rev=true)
+"""
+docstring needed
+"""
 isnormalupper(x::Scatter)::Bool = isnormal(x) && (x.in > x.out || x.in == x.out && iszero(imag(x.Amp)))
 
+"""
+    get_body(::Scatter{N}) = N
+
+Return number of body.
+"""
 get_body(::Scatter{N}) where {N} = N
 
 import Base: adjoint
+"""
+    adjoint(s::Scatter{N})::Scatter{N}
+
+Create a reverse scattering term: exchange incident and output orbitals and conjugate amplitude.
+"""
 function adjoint(s::Scatter{N})::Scatter{N} where {N}
     Scatter{N}(conj(s.Amp), s.in, s.out)
 end
+"""
+    isdiagonal(s::Scatter)::Bool
+
+s.in == s.out
+"""
 isdiagonal(s::Scatter)::Bool = s.in == s.out
 
 
 
 import Base: isless, ==, +, *
+"""
+    isless(s1::Scatter{N1}, s2::Scatter{N2})::Bool
+
+Irrelevant to  amplitute, compare scattering types.
+
+N1 < N2; if equal, s1.in < s2.in; if equal, s1.out < s2.out.
+"""
 function isless(s1::Scatter{N1}, s2::Scatter{N2}) where {N1, N2} 
     N1 < N2 || N1 == N2 && ( s1.in < s2.in || s1.in == s2.in && s1.out < s2.out )
 end
-==(x::Scatter{N}, y::Scatter{N}) where {N} = x.in == y.in && x.out == y.out
+"""
+    ==(s1::Scatter{N1}, s2::Scatter{N2})::Bool
+
+Irrelevant to  amplitute, check if the scattering types are the same.
+
+N1 == N2, and s1.in == s2.in, and s1.out == s2.out.
+"""
+function ==(x::Scatter{N1}, y::Scatter{N2}) where {N1, N2}
+    N1 == N2 && x.in == y.in && x.out == y.out
+end
+"""
+    s1::Scatter{N} + s2::Scatter{N} -> sum::Scatter{N}
+
+Combine the amplitutes of the two terms of the same type. 
+
+(N1 == N2) and s1.in == s2.in and s1.out == s2.out.
+
+Return a scattering term with summing amplitute.
+"""
 function +(x::Scatter{N}, y::Scatter{N})::Scatter{N} where {N}
     @assert x == y "Can only add identical Scatter terms"
     return Scatter{N}(x.Amp + y.Amp, x.out, x.in)
 end
-function *(x::T, scat::Scatter{N})::Scatter{N} where {N, T <: Number}
-    Scatter{N}(ComplexF64(x)*scat.Amp, scat.out, scat.in)
+"""
+    a::Number * s::Scatter{N} -> s'::Scatter{N}
+
+Return a scattering term with amplitute multiplied a number.
+
+The number should be able to converted as ComplexF64.
+"""
+function *(a::T, scat::Scatter{N})::Scatter{N} where {N, T <: Number}
+    Scatter{N}(ComplexF64(a)*scat.Amp, scat.out, scat.in)
 end
 
 
 
 
 """
-Sort and merge a list of normalized Scatter terms
+    sort_merge_scatlist(lists; keywords)
+
+Sort and merge a list (lists) of normalized Scatter terms.
+
+# Input
+- (1) lists::Vector{Scatter{N}}:
+Return a sorted and merged list: Vector{Scatter{N}}
+- (2) lists::Vector{Scatter}:
+Grouping scattering terms by their N, then sorting and merging each group. 
+Return a list of sorted and merged lists: Vector{Vector{<: Scatter}}, each inner list has a specified N.
+- (3) lists::Vector{Vector{<:Scatter}}:
+Similar to (2).
+Return a list of sorted and merged lists: Vector{Vector{<: Scatter}}, each inner list has a specified N.
+
+# Keywords
+- `check_normal::Bool` = true: checking all the scatting terms are in nomal order
+- `check_normalupper::Bool` = true: checking all the scatting terms are in nomal order and is in the upper triangular position.
 """
 function sort_merge_scatlist(normal_sct_list::Vector{<: Scatter};
     check_normal::Bool = true, check_normalupper::Bool = true

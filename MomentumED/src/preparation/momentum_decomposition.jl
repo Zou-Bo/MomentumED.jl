@@ -1,7 +1,7 @@
 
 """
 This file provides:
-Iterators over MBS64 combinations of t electrons in n states (in one component) in sorted order;
+Iterators over MBS64 combinations of `t` electrons in `n` states (in one component) in sorted order;
 Recursive iteration function over multi-component MBS64 with given para and electron number of each component;
 Generating Hilbert subspaces distinguished by total momentum using the previous function.
 """
@@ -198,14 +198,16 @@ end
 global PRINT_RECURSIVE_MOMENTUM_DIVISION::Bool = false
 
 """
-    mbslist_recursive_iteration!(...)
+    mbslist_recursive_iteration!(subspaces, subspace_k1, subspace_k2, para, N_each_component, accumulated_mbs, accumulated_momentum; mask=nothing)
 
 An internal recursive function that constructs many-body states and sorts them into momentum subspaces.
 
-The function works by processing one conserved component at a time. It loops through all valid states for the current component and then calls itself recursively for the next component, accumulating the state (`MBS64`) and total momentum.
+The function works by processing one conserved component at a time. It iterates through all valid states for the current component and then calls itself recursively for the next component, accumulating the state (`MBS64`) and total momentum.
 
 # Recursion Logic
 The recursion proceeds from the last element of `N_each_component` to the first. In each step, it generates all possible states for the current component based on the particle number `abs(N_each_component[end])` and combines them (via `*`) with the `accumulated_mbs` from the previous steps. The momentum is also updated.
+
+When the recursion is complete (`N_each_component` is empty), the final state and its total momentum are known, and the state is pushed into the correct momentum subspace in `subspaces`.
 
 # Particle vs. Hole Creation
 The sign of the number in `N_each_component` determines whether particles or holes are created:
@@ -214,8 +216,6 @@ The sign of the number in `N_each_component` determines whether particles or hol
 
 # Mask
 The `mask` argument, if provided, restricts the set of orbitals that can be occupied (for positive `N`) or made into holes (for negative `N`) for the single-component states.
-
-When the recursion is complete (`N_each_component` is empty), the final state and its total momentum are known, and the state is pushed into the correct momentum subspace.
 """
 function mbslist_recursive_iteration!(subspaces::Vector{HilbertSubspace{bits}}, 
     subspace_k1::Vector{Int64}, subspace_k2::Vector{Int64}, 
@@ -251,45 +251,38 @@ function mbslist_recursive_iteration!(subspaces::Vector{HilbertSubspace{bits}},
 end
 
 """
-    ED_momentum_subspaces(para::EDPara, mbs_list::Vector{MBS64{bits}};
-        momentum_restriction = false, k1range=(-2,2), k2range=(-2,2),
-        momentum_list::Vector{Tuple{Int64, Int64}} = Vector{Tuple{Int64, Int64}}(),
-        ) where {bits}
+    ED_momentum_subspaces(para::EDPara, N_each_component; kwargs...) -> Tuple{Vector{HilbertSubspace}, Vector{Int64}, Vector{Int64}}
 
-需要更详细的docstring，解释他的循环结构，解释mask的意义。当N出现负数时，含义是在为1的位上生成“空穴“，这在MomentumED/src/analysis/particle_reduced_density_matrix.jl中会用到。
+Constructs Hilbert subspaces, each corresponding to a specific total momentum.
 
-Divide a list of MBS64 states into momentum blocks based on total momentum.
-
-This function takes a complete basis of MBS64 states and divides them into blocks
-where each block contains states with the same total (k1, k2) momentum. This enables
-momentum-conserved diagonalization by processing each block independently.
-
-Duplicates, up to mod Gk, in the suggested momentum_list will be removed.
+This is the main user-facing function to generate the basis states for a momentum-conserved calculation. It orchestrates the construction of many-body states by calling the recursive helper function `mbslist_recursive_iteration!`. The resulting states are partitioned into `HilbertSubspace` objects, each containing all states with a specific total momentum `(K1, K2)`.
 
 # Arguments
-- `para::EDPara`: Parameter structure containing momentum and component information
-- `mbs_list::Vector{MBS64{bits}}`: Complete basis of MBS64 states
-- `momentum_restriction::Bool`: Whether to restrict momentum range (default: false)
-- `k1range::Tuple{Int64, Int64}`: Range for k1 momentum (default: (-2,2))
-- `k2range::Tuple{Int64, Int64}`: Range for k2 momentum (default: (-2,2))
-- `momentum_list::Vector{Tuple{Int64, Int64}}`: Specific momenta to include (default: all)
+- `para::EDPara`: The parameter object containing system details like momentum vectors and component info.
+- `N_each_component`: A tuple or vector specifying the number of particles in each conserved component. The sign of the number has a special meaning:
+    - **Positive `N`**: Represents `N` particles.
+    - **Negative `N`**: Represents `abs(N)` holes in a fully filled band. This is useful for certain calculations like the particle reduced density matrix (see `MomentumED/src/analysis/particle_reduced_density_matrix.jl`).
+
+# Keyword Arguments
+- `dict::Bool = false`: If `true`, a dictionary mapping each state to its index is created within each `HilbertSubspace`.
+- `index_type::Type = Int64`: The integer type for the dictionary indices.
+- `momentum_restriction::Bool = false`: If `true`, only generate subspaces for momenta specified by `k1range`, `k2range`, or `momentum_list`.
+- `k1range::Tuple{Int64, Int64}`: The range of `k1` total momentum to generate.
+- `k2range::Tuple{Int64, Int64}`: The range of `k2` total momentum to generate.
+- `momentum_list::Vector{Tuple{Int64, Int64}}`: A list of specific `(K1, K2)` total momenta to generate.
+- `mask::Union{Nothing, Vector{Int64}} = nothing`: Restricts the set of available single-particle orbitals for the first component processed by the recursive algorithm. For positive `N`, only orbitals in the mask are occupied. For negative `N`, holes are created only from orbitals in the mask.
 
 # Returns
-- `blocks::Vector{Vector{MBS64{bits}}}`: List of momentum blocks, each containing states with same momentum
-- `block_k1::Vector{Int64}`: k1 momentum values for each block
-- `block_k2::Vector{Int64}`: k2 momentum values for each block
-- `zero_block_index::Int64`: Index of k1=k2=0 block (0 if not exists)
+- `subspaces::Vector{HilbertSubspace}`: A vector of Hilbert subspaces. Each element contains a list of `MBS64` states belonging to a specific momentum.
+- `subspace_k1::Vector{Int64}`: A vector where `subspace_k1[i]` is the `k1` momentum of `subspaces[i]`.
+- `subspace_k2::Vector{Int64}`: A vector where `subspace_k2[i]` is the `k2` momentum of `subspaces[i]`.
 
 # Example
 ```julia
-para = EDPPara(k_list=[0 1; 0 0], Nc_hopping=1, Nc_conserve=1)
-states = ED_mbslist(para, (2,))  # Generate basis
-blocks, k1_list, k2_list, zero_idx = ED_momentum_block_division(para, states)
+para = EDPara(k_list=[0 1; 0 0], Nc_conserve=2)
+# Generate subspaces for a system with 1 particle in the first component and 2 in the second
+subspaces, subspace_k1, subspace_k2 = ED_momentum_subspaces(para, (1, 2))
 ```
-
-# Notes
-This function is essential for momentum-conserved exact diagonalization, as it enables
-parallel processing of different momentum sectors independently.
 """
 function ED_momentum_subspaces(para::EDPara, N_each_component;
     dict::Bool = false, index_type::Type = Int64,  momentum_restriction::Bool = false, 
