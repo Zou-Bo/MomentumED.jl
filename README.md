@@ -1,8 +1,8 @@
 # MomentumED.jl
 
 [![CI](https://github.com/Zou-Bo/MomentumED.jl/workflows/CI/badge.svg)](https://github.com/Zou-Bo/MomentumED.jl/actions/workflows/CI.yml)
-<!-- [![Documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://Zou-Bo.github.io/MomentumED.jl/stable)
-[![Documentation](https://img.shields.io/badge/docs-dev-blue.svg)](https://Zou-Bo.github.io/MomentumED.jl/dev) -->
+[![Documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://Zou-Bo.github.io/MomentumED.jl/stable)
+[![Documentation](https://img.shields.io/badge/docs-dev-blue.svg)](https://Zou-Bo.github.io/MomentumED.jl/dev)
 [![Code Style](https://img.shields.io/badge/code%20style-blue-4495d1.svg)](https://github.com/JuliaFormatter/JuliaFormatter.jl)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -59,7 +59,7 @@ This project contains two packages: `EDCore` and `MomentumED`. Since they are no
 
 Once the packages are registered in the Julia General Registry, you will be able to install them simply with `Pkg.add("MomentumED")`.
 
-## Structure
+## Structure and Dependency
 
 The project is organized into two main packages:
 
@@ -70,6 +70,19 @@ The project is organized into two main packages:
     - `MomentumED/src/preparation/`: Functions for setting up calculations (parameter initialization, basis generation).
     - `MomentumED/src/method/`: Hamiltonian construction and eigensolving methods.
     - `MomentumED/src/analysis/`: Functions for post-calculation analysis (RDM, Berry connection, etc.).
+
+The dependency tree for the packages is as follows:
+
+```
+MomentumED
+├── EDCore
+│   ├── LinearAlgebra
+│   └── Combinatorics
+├── KrylovKit
+├── LinearAlgebra
+└── SparseArrays
+```
+
 
 
 ## Usage

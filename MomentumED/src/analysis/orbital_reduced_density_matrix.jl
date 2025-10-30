@@ -1,3 +1,6 @@
+"""
+    docstring needed
+"""
 function OES_NumMomtBlocks(para::EDPara, orb_list, 
     Ne::Union{Vector{Int64}, Tuple{Vararg{Int64}}})
 
@@ -17,6 +20,7 @@ function OES_NumMomtBlocks(para::EDPara, orb_list,
         lengthA[c] += 1
     end
     number_block_size = min.(lengthA, Ne) .+ 1
+    # println("lengthA = $lengthA, number_block_size = $number_block_size")
     subspacesA_list = Array{Vector{HilbertSubspace{bits}}}(undef, number_block_size...)
     subspacesB_list = Array{Vector{HilbertSubspace{bits}}}(undef, number_block_size...)
     momentumA_list = Array{Vector{Tuple{Int64, Int64}}}(undef, number_block_size...)
@@ -25,6 +29,7 @@ function OES_NumMomtBlocks(para::EDPara, orb_list,
     for indexA in CartesianIndices(subspacesA_list)
         NA = Tuple(indexA) .- 1
         NB = Tuple(Ne) .- NA
+        # println(NA, " ", NB)
         Asubspace, Ak1, Ak2 = ED_momentum_subspaces(para, NA; mask = maskA);
         Bsubspace, Bk1, Bk2 = ED_momentum_subspaces(para, NB; mask = maskB);
         subspacesA_list[indexA] = Asubspace
@@ -37,6 +42,9 @@ function OES_NumMomtBlocks(para::EDPara, orb_list,
 
 end
 
+"""
+    docstring needed.
+"""
 function OES_NumMomtBlock_coef(para::EDPara, vector::MBS64Vector{bits, F}, momentum::Tuple{<:Real, <:Real},
     subspaceA::Vector{HilbertSubspace{bits}}, subspaceB::Vector{HilbertSubspace{bits}}, 
     momentumA::Vector{Tuple{Int64, Int64}}, momentumB::Vector{Tuple{Int64, Int64}};

@@ -6,7 +6,6 @@ Recursive iteration function over multi-component MBS64 with given para and elec
 Generating Hilbert subspaces distinguished by total momentum using the previous function.
 """
 
-using Combinatorics
 
 """
 The Combinations iterator in colex order (meaning sorted MBS64 list)
@@ -24,7 +23,14 @@ end
 
 # Iteration
 @inline function Base.iterate(c::ColexMBS64) # starting point
-    (MBS64(c.n, 1:c.t), [collect(1:c.t); c.n+1])
+    try
+        @assert c.t >= 0
+        MBS64(c.n, 1:c.t)
+    catch
+        # @info "iteration $c is empty."
+        return
+    end
+    return (MBS64(c.n, 1:c.t), [collect(1:c.t); c.n+1])
 end
 @inline function Base.iterate(c::ColexMBS64, s)
     if c.t == 0
@@ -61,7 +67,14 @@ end
 
 # Iteration
 @inline function Base.iterate(c::ColexMBS64Mask) # starting point
-    (MBS64(c.n, 1:c.t, c.mask), [collect(1:c.t); length(c.mask)+1])
+    try
+        @assert c.t >= 0
+        MBS64(c.n, 1:c.t, c.mask)
+    catch
+        # @info "iteration $c is empty."
+        return
+    end
+    return (MBS64(c.n, 1:c.t, c.mask), [collect(1:c.t); length(c.mask)+1])
 end
 @inline function Base.iterate(c::ColexMBS64Mask, s)
     if c.t == 0
@@ -115,7 +128,7 @@ function mbslist_onecomponent(para::EDPara, N_in_one::Int64, mask::Union{Nothing
     isnothing(mask) && return mbslist_onecomponent(para, N_in_one)
     Nstate = para.Nk * para.Nc_hopping
     @assert 0 <= N_in_one <= Nstate "Invalid number of electrons in one component"
-    @assert 1 <= minimum(mask) && maximum(mask) <= Nstate "Invalid orbital index in mask for one component"
+    @assert isempty(mask) || 1 <= minimum(mask) && maximum(mask) <= Nstate "Invalid orbital index in mask for one component, mask=$mask, Nstate=$Nstate"
     return ColexMBS64Mask(Nstate, N_in_one, mask)
 end
 
@@ -214,8 +227,12 @@ The sign of the number in `N_each_component` determines whether particles or hol
 - **Positive `N`**: Creates `N` particles in an empty sea of orbitals for the current component.
 - **Negative `N`**: Creates `abs(N)` holes in a filled sea of orbitals. This is used for calculations like the particle reduced density matrix where one considers states in the complementary space.
 
-# Mask
+# Keywords
 The `mask` argument, if provided, restricts the set of orbitals that can be occupied (for positive `N`) or made into holes (for negative `N`) for the single-component states.
+`mask` is a Vector{Int64} and must be sorted.
+
+`check_mask_sorted::Bool=false` will assert `mask` is sorted if it's provided. 
+It will only check once at the begining of outermost iteration.
 """
 function mbslist_recursive_iteration!(subspaces::Vector{HilbertSubspace{bits}}, 
     subspace_k1::Vector{Int64}, subspace_k2::Vector{Int64}, 
@@ -223,20 +240,43 @@ function mbslist_recursive_iteration!(subspaces::Vector{HilbertSubspace{bits}},
     accumulated_mbs::MBS64 = reinterpret(MBS64{0}, 0), 
     accumulated_momentum::Tuple{Int64, Int64} = (0, 0); 
     mask::Union{Nothing, Vector{Int64}} = nothing,
+    check_mask_sorted::Bool = false
 ) where {bits}
+
+    if check_mask_sorted && !isnothing(mask)
+        @assert issorted(mask)
+    end
 
     if !isempty(N_each_component) 
         PRINT_RECURSIVE_MOMENTUM_DIVISION && println("Enter loop with $N_each_component. 
         Momentum $(accumulated_momentum[1]) $(accumulated_momentum[2])\n\t$accumulated_mbs\n")
-        for mbs_smaller in mbslist_onecomponent(para, abs(N_each_component[end]), mask)
-            PRINT_RECURSIVE_MOMENTUM_DIVISION && println("generated mbs in the new component:\n$mbs_smaller")
-            new_momentum = sign(N_each_component[end]) .* MBS_totalmomentum(para, mbs_smaller)
-            mbslist_recursive_iteration!(subspaces, subspace_k1, subspace_k2, para, 
-                N_each_component[begin:end-1],          # remaining components
-                accumulated_mbs * mbs_smaller,          # updated MBS64
-                accumulated_momentum .+ new_momentum    # updated momentum 
-            )
+        if !isnothing(mask)
+            num_component_orbitals = para.Nk * para.Nc_hopping* (length(N_each_component) - 1)
+            i = searchsortedlast(mask, num_component_orbitals)
+            mask_this_component = mask[i+1:end] .- num_component_orbitals
+            for mbs_smaller in mbslist_onecomponent(para, abs(N_each_component[end]), mask_this_component)
+                PRINT_RECURSIVE_MOMENTUM_DIVISION && println("generated mbs in the new component:\n$mbs_smaller")
+                new_momentum = sign(N_each_component[end]) .* MBS_totalmomentum(para, mbs_smaller)
+                mbslist_recursive_iteration!(subspaces, subspace_k1, subspace_k2, para, 
+                    N_each_component[begin:end-1],          # remaining components
+                    accumulated_mbs * mbs_smaller,          # updated MBS64
+                    accumulated_momentum .+ new_momentum;   # updated momentum 
+                    mask = mask[begin:i]
+                )
+            end
+        else
+            for mbs_smaller in mbslist_onecomponent(para, abs(N_each_component[end]))
+                PRINT_RECURSIVE_MOMENTUM_DIVISION && println("generated mbs in the new component:\n$mbs_smaller")
+                new_momentum = sign(N_each_component[end]) .* MBS_totalmomentum(para, mbs_smaller)
+                mbslist_recursive_iteration!(subspaces, subspace_k1, subspace_k2, para, 
+                    N_each_component[begin:end-1],          # remaining components
+                    accumulated_mbs * mbs_smaller,          # updated MBS64
+                    accumulated_momentum .+ new_momentum;   # updated momentum 
+                    mask = nothing
+                )
+            end
         end
+
     else
         k1, k2 = accumulated_momentum
         Gk = para.Gk
@@ -346,7 +386,7 @@ function ED_momentum_subspaces(para::EDPara, N_each_component;
     mbslist_recursive_iteration!(
         subspaces, subspace_k1, subspace_k2, 
         para, collect(N_each_component);
-        mask = mask
+        mask = isnothing(mask) ? nothing : sort!(mask)
     )
 
     empty_mask = length.(subspaces) .!= 0

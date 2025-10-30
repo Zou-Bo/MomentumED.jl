@@ -20,8 +20,8 @@ include("types/scattering.jl")
 include("types/operator.jl")
 include("types/multiplication.jl")
 
-# if ccall(:jl_generating_output, Cint, ()) == 1
-#     include("precompile.jl")
-# end
+if ccall(:jl_generating_output, Cint, ()) == 1
+    include("precompile.jl")
+end
 
 end

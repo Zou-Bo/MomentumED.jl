@@ -55,6 +55,6 @@ dist/
 *.backup
 
 # working files
-Landau level disk/
+Landau level disk/test*
 Landau level torus/test*
 

@@ -2,6 +2,7 @@
 # Scattering{F <: AbstractFloat, N}
 
 using LinearAlgebra
+using Combinatorics
 
 """
     Scatter{N} - Represents an N-body Scatter term in the Hamiltonian
@@ -18,7 +19,7 @@ struct Scatter{N}
 end
 
 """
-    Scatter(V, outin::Int64...)
+    Scatter(V, out_in::Int64...)
 
 Construct a Scatter term from amplitude and orbital indices. 
 However, it's recommemded to use `NormalScatter` for construction.
@@ -30,7 +31,7 @@ operators), in reverse order for proper normal ordering.
 
 # Arguments
 - `V::Number`: Scatter amplitude (converted to ComplexF64)
-- `outin::Int64...`: Variable number of orbital indices (must be even)
+- `out_in::Int64...`: Variable number of orbital indices (must be even)
 
 # Examples
 ```julia
@@ -41,11 +42,11 @@ s1 = Scatter(1.0, 1, 2)  # Creates c†_1 c_2 term
 s2 = Scatter(0.5, 1, 2, 4, 3)  # Creates c†_1 c†_2 c_4 c_3 term
 ```
 """
-function Scatter(V, outin::Int64...)
-    @assert iseven(length(outin)) "Number of indices must be even"
-    N = length(outin) ÷ 2
-    outstates = outin[begin:N]
-    instates = reverse(outin[N + 1:end])
+function Scatter(V, out_in::Int64...)
+    @assert iseven(length(out_in)) "Number of indices must be even"
+    N = length(out_in) ÷ 2
+    outstates = out_in[begin:N]
+    instates = reverse(out_in[N + 1:end])
     return Scatter{N}(ComplexF64(V), outstates, instates)
 end
 
@@ -59,7 +60,7 @@ function Base.show(io::IO, st::Scatter{N}) where {N}
 end
 
 """
-    NormalScatter(V::ComplexF64, ij::Int64...; upper_hermitian::Bool = false)::Scatter
+    NormalScatter(V::ComplexF64, out_in::Int64...; upper_hermitian::Bool = false)::Scatter
 
 Generate a scattering term with normal ordering. Optimized for N=1,2.
 
@@ -73,16 +74,16 @@ or equlivently in Julia's grammer\n
 
 Example:
 ```julia
-NormalScatter(1.0+0.0im, 5, 3) == NormalScatter(-1.0+0.0im, 3, 5)
+NormalScatter(1.0+0.0im, 5, 3; upper_hermitian=true) == Scatter(-1.0+0.0im, 3, 5)
 ```
 """
-function NormalScatter(V::ComplexF64, ij::Int64...; upper_hermitian::Bool = false)::Scatter
-    @assert iseven(length(ij)) "number conservation requires annihilated and created indices number being even"
-    N = length(ij) ÷ 2
+function NormalScatter(V::ComplexF64, out_in::Int64...; upper_hermitian::Bool = false)::Scatter
+    @assert iseven(length(out_in)) "number conservation requires annihilated and created indices number being even"
+    N = length(out_in) ÷ 2
     @assert N >= 3
 
-    is = collect(ij[1:N])
-    js = collect(ij[2N:-1:N+1])
+    is = collect(out_in[1:N])
+    js = collect(out_in[2N:-1:N+1])
 
     i_sort = sortperm(is, rev = true)
     j_sort = sortperm(js, rev = true)
@@ -90,23 +91,27 @@ function NormalScatter(V::ComplexF64, ij::Int64...; upper_hermitian::Bool = fals
     j_sorted = js[j_sort]
 
     # no repetition
-    if reduce(|, [diff(i_sorted); diff(j_sorted)] .== 0; init = false)
-        return Scatter{N}(0.0, i_sorted, j_sorted)
+    # if reduce(|, [diff(i_sorted); diff(j_sorted)] .== 0; init = false)
+    if allunique(j_sorted) && allunique(i_sorted)
+        return Scatter{N}(ComplexF64(0.0), Tuple(i_sorted), Tuple(j_sorted))
     end
+
     if isodd(parity(i_sort) + parity(j_sort))
         V = -V
     end
 
+    j_tuple = Tuple(j_sorted)
+    i_tuple = Tuple(i_sorted)
     if upper_hermitian
-        if j_sorted < i_sorted
-            i_sorted, j_sorted = j_sorted, i_sorted
+        if j_tuple < i_tuple
+            i_tuple, j_tuple = j_tuple, i_tuple
             V = conj(V)
-        elseif j_sorted == i_sort
+        elseif j_tuple == i_sort
             V = real(V) + 0.0im
         end
     end
 
-    return Scatter{N}(V, i_sorted, j_sorted)
+    return Scatter{N}(V, i_tuple, j_tuple)
 end
 function NormalScatter(V::ComplexF64, i::Int64, j::Int64; upper_hermitian::Bool = false)::Scatter{1}
     # N = 1
@@ -144,7 +149,6 @@ function NormalScatter(V::ComplexF64, i1::Int64, i2::Int64, j2::Int64, j1::Int64
 
     # Skip if indices are invalid
     if j1 == j2 || i1 == i2
-        @warn "Skipping invalid interaction term: $S"
         return Scatter(0.0, i1, i2, j2, j1)
     end
     

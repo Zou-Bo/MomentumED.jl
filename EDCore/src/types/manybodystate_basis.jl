@@ -193,11 +193,12 @@ end
 MBS64(bits, occ_list, mask) = MBS64(bits, mask[occ_list])
 
 """
-(need more)
-Input a MBS64{bits} mask; return its complete mask.
+    MBS64_complete(mbs::MBS64{bits})::MBS64{bits}
+
+Return the complete occupation of a `MBS64{bits}`.
 """
-function MBS64_complete(mask::MBS64{bits})::MBS64{bits} where {bits}
-    MBS64{bits}(UInt64(1) << bits -1 - mask.n)
+function MBS64_complete(mbs::MBS64{bits})::MBS64{bits} where {bits}
+    MBS64{bits}(UInt64(1) << bits -1 - mbs.n)
 end
 
 """
