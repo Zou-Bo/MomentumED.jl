@@ -11,7 +11,8 @@ using SparseArrays
 using KrylovKit
 
 # types from MomentumEDCore
-export MBS64, HilbertSubspace, MBS64Vector, Scatter, MBOperator
+export EDCore, MBS64, NormalScatter, MBOperator
+export HilbertSubspace, MBS64Vector, Scatter
 public get_bits, get_body, make_dict!, delete_dict!
 public isphysical, isupper, isnormal, isnormalupper, isdiagonal
 export ED_bracket, ED_bracket_threaded

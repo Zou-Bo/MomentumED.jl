@@ -9,6 +9,11 @@ import Base: *
 Applying a scatter operator on a many-body basis. Return the amplitute and the output many-body basis.
 
 The amplitute is zero if no output state.
+
+Notice: this multiplication assumes `scat` is normal.
+Using abnormal `Scatter` term will generate same result as if its indices are sorted,
+which may cause a sign error.
+It is recommended to always use `NormalScatter` to create `Scatter` terms.
 """
 function *(scat::Scatter{N}, mbs_in::MBS64{bits})::Tuple{ComplexF64, MBS64{bits}} where {N, bits} 
     
@@ -50,6 +55,11 @@ Applying a scatter operator on a output many-body basis from the right.
 Return the amplitute and the incident many-body basis.
 
 The amplitute is zero if no incident state.
+
+Notice: this multiplication assumes `scat` is normal.
+Using abnormal `Scatter` term will generate same result as if its indices are sorted,
+which may cause a sign error.
+It is recommended to always use `NormalScatter` to create `Scatter` terms.
 """
 function *(mbs_out::MBS64{bits}, scat::Scatter{N})::Tuple{ComplexF64, MBS64{bits}} where {N, bits} 
     
