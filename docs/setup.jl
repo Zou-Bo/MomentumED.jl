@@ -12,8 +12,9 @@ pathToMomentumED = joinpath(@__DIR__, "..", "MomentumED")
 
 # Add the local packages using Pkg.develop
 # This allows Documenter to find the modules and their docstrings
-Pkg.develop(path=pathToEDCore)
-Pkg.develop(path=pathToMomentumED)
-
+Pkg.develop([
+    Pkg.PackageSpec(path=pathToEDCore),
+    Pkg.PackageSpec(path=pathToMomentumED)
+])
 # Instantiate the docs project dependencies
 Pkg.instantiate()
