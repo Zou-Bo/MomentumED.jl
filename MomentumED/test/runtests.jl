@@ -1,6 +1,7 @@
 using Test
 using MomentumED
 
+EDPara
 include("example1_FQH_Laughlin.jl")
 
 

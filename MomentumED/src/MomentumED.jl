@@ -10,34 +10,27 @@ using LinearAlgebra
 using SparseArrays
 using KrylovKit
 
-# types from MomentumEDCore
+# submodules
+export EDCore, Preparation, Methods, Analysis
+
+# main solving function
+export EDsolve
+
+# from EDCore
 export EDCore, MBS64, NormalScatter, MBOperator
 export HilbertSubspace, MBS64Vector, Scatter
 public get_bits, get_body, make_dict!, delete_dict!
 public isphysical, isupper, isnormal, isnormalupper, isdiagonal
 export ED_bracket, ED_bracket_threaded
-
-# Include utilities
-include("preparation/init_parameter.jl")
-include("preparation/momentum_decomposition.jl")
-include("preparation/scat_list.jl")
-include("method/sparse_matrix.jl")
-include("method/linear_map.jl")
-include("analysis/particle_reduced_density_matrix.jl")
-include("analysis/orbital_reduced_density_matrix.jl")
-include("analysis/manybody_connection.jl")
+public ColexMBS64, ColexMBS64Mask
 
 # preparation
-public mbslist_onecomponent
 export EDPara, ED_momentum_subspaces
 export ED_sortedScatterList_onebody
 export ED_sortedScatterList_twobody
 
 # methods
 public ED_HamiltonianMatrix_threaded, LinearMap
-
-# main solving function
-export EDsolve
 
 # analysis - reduced density matrix for entanglement spectrum
 export PES_1rdm, PES_MomtBlocks, PES_MomtBlock_rdm
@@ -50,11 +43,50 @@ export ED_connection_step, ED_connection_gaugefixing!
 public PRINT_RECURSIVE_MOMENTUM_DIVISION
 public PRINT_TWOBODY_SCATTER_PAIRS
 
-
+global PRINT_RECURSIVE_MOMENTUM_DIVISION::Bool = false
+global PRINT_TWOBODY_SCATTER_PAIRS::Bool = false
 
 """
-    EDsolve(subspace::HilbertSubspace, hamiltonian; 
-        kwargs...) -> (energies::Vector, vectors::Vector{MBS64Vector})
+This module provides methods of defining a system for calculation.
+Many functions assume the system has at most two-body symmetric interaction,
+Hermitian Hamiltonian, and momentum conservation.
+"""
+module Preparation
+    export EDPara, ED_momentum_subspaces
+    export ED_sortedScatterList_onebody
+    export ED_sortedScatterList_twobody
+
+    import ..MomentumED.PRINT_RECURSIVE_MOMENTUM_DIVISION
+    import ..MomentumED.PRINT_TWOBODY_SCATTER_PAIRS
+
+    using EDCore
+
+    include("preparation/init_parameter.jl")
+    include("preparation/momentum_decomposition.jl")
+    include("preparation/scat_list.jl")
+end
+
+"""
+This module provides methods of generating Hamiltonian sparse matrix or Hamiltonian linear map,
+and use KrylovKit to solve them.
+"""
+module Methods
+    export ED_HamiltonianMatrix_threaded, LinearMap
+    export krylov_map_solve, krylov_matrix_solve
+
+    using EDCore
+    using ..Preparation
+    using SparseArrays
+    using LinearAlgebra
+    using KrylovKit
+    
+    include("method/sparse_matrix.jl")
+    include("method/linear_map.jl")
+end
+
+"""
+    EDsolve(subspace::HilbertSubspace, hamiltonian; kwargs...) 
+        -> energies::Vector, vectors::Vector{MBS64Vector}
 
 Main exact diagonalization solver for momentum-conserved quantum systems.
 
@@ -72,8 +104,8 @@ This function finds the lowest eigenvalues and eigenvectors of a Hamiltonian wit
     - `:sparse`: (Default) Constructs the Hamiltonian as a sparse matrix. Good for most cases.
     - `:dense`: Constructs a dense matrix. Can be faster for very small systems.
     - `:map`: Uses a matrix-free `LinearMap` approach. This is the most memory-efficient method for very large systems and requires the `hamiltonian` to be an `MBOperator`.
-% - `element_type::Type = Float64`: The element type for the Hamiltonian matrix (for `:sparse`/:`dense`).
-% - `index_type::Type = Int64`: The integer type for the sparse matrix indices (for `:sparse`).
+- `element_type::Type = Float64`: The element type for the Hamiltonian matrix (for `:sparse`/:`dense`).
+- `index_type::Type = Int64`: The integer type for the sparse matrix indices (for `:sparse`).
 - `min_sparse_dim::Int64 = 100`: If `method` is `:sparse` but the dimension is smaller than this, it will automatically switch to `:dense`.
 - `max_dense_dim::Int64 = 200`: If `method` is `:dense` but the dimension is larger than this, it will automatically switch to `:sparse`.
 - `ishermitian::Bool = true`: Specifies if the Hamiltonian is Hermitian. This is passed to the eigensolver for optimization.
@@ -113,7 +145,7 @@ function EDsolve(subspace::HilbertSubspace{bits}, sorted_scat_lists::Vector{<: S
 
     if method == :map
 
-        error("Linear map method is only used when input Hamitonian is MBOperator instead of Vector{Scatter}.")
+        error("Linear map method is only supported when input Hamitonian is MBOperator instead of Vector{Scatter}.")
 
     elseif method == :sparse || method == :dense
 
@@ -227,143 +259,26 @@ function EDsolve(subspace::HilbertSubspace{bits}, Hamiltonian::MBOperator;
 
 end
 
+"""
+This module provides methods to analysis the ED eigenwavefunctions,
+including generating particle(hole)/orbital reduced density matrix for entanglement spectrum analysis, 
+and many-body connection analysis with momentum shifts
+"""
+module Analysis
+    export PES_1rdm, PES_MomtBlocks, PES_MomtBlock_rdm
+    export OES_NumMomtBlocks, OES_NumMomtBlock_coef
+    export ED_connection_step, ED_connection_gaugefixing!
 
+    using EDCore
+    using ..Preparation
 
+    include("analysis/particle_reduced_density_matrix.jl")
+    include("analysis/orbital_reduced_density_matrix.jl")
+    include("analysis/manybody_connection.jl")
 end
 
-#=
-"""
-Calculate the reduced density matrix for a subsystem
-"""
-function reduced_density_matrix(psi::Vector{ComplexF64}, 
-                               block_MBSList::Vector{MBS{bits}},
-                               nA::Vector{Int64},
-                               iA::Vector{Int64};
-                               cutoff::Float64=1E-7) where {bits}
-    
-    bits_total = bits
-    sorted_state_num_list = getfield.(block_MBSList, :n)
-    
-    # Filter by cutoff
-    index_list = findall(x -> abs2(x) > cutoff, psi)
-    psi_filtered = psi[index_list]
-    num_list = sorted_state_num_list[index_list]
-    
-    Amask = sum(1 << i for i in iA; init=0)
-    Bmask = (1 << bits_total) - 1 - Amask
-    
-    # Sort by B subsystem
-    myless_fine(n1, n2) = n1 & Bmask < n2 & Bmask || n1 & Bmask == n2 & Bmask && n1 < n2
-    myless_coarse(n1, n2) = n1 & Bmask < n2 & Bmask
-    
-    perm = sortperm(num_list; lt=myless_fine)
-    psi_sorted = psi_filtered[perm]
-    num_sorted = num_list[perm]
-    
-    # Find B chunks
-    Bchunks_lastindices = Int64[0]
-    let i=0
-        while i < length(num_sorted)
-            i = searchsortedlast(num_sorted, num_sorted[i+1]; lt=myless_coarse)
-            push!(Bchunks_lastindices, i)
-        end
-    end
-    
-    NA = length(nA)
-    RDM_threads = zeros(ComplexF64, NA, NA, Threads.nthreads())
-    
-    Threads.@threads for nchunk in 1:length(Bchunks_lastindices)-1
-        id = Threads.threadid()
-        chunkpiece = Bchunks_lastindices[nchunk]+1:Bchunks_lastindices[nchunk+1]
-        numB = num_sorted[chunkpiece[1]] & Bmask
-        
-        for i in 1:NA
-            numA = nA[i]
-            num = numB + numA
-            index = my_searchsortedfirst(num_sorted[chunkpiece], num)
-            index == 0 && continue
-            
-            RDM_threads[i, i, id] += abs2(psi_sorted[chunkpiece[index]])
-            
-            for i′ in i+1:NA
-                numA′ = nA[i′]
-                num′ = numB + numA′
-                index′ = my_searchsortedfirst(num_sorted[chunkpiece], num′)
-                index′ == 0 && continue
-                
-                rhoii′ = conj(psi_sorted[chunkpiece[index′]]) * psi_sorted[chunkpiece[index]]
-                RDM_threads[i, i′, id] += rhoii′
-                RDM_threads[i′, i, id] += conj(rhoii′)
-            end
-        end
-    end
-    
-    return sum(RDM_threads; dims=3)[:, :, 1]
+using .Preparation
+using .Methods
+using .Analysis
+
 end
-
-"""
-Calculate entanglement entropy from reduced density matrix
-"""
-function entanglement_entropy(RDM_A::Matrix{ComplexF64}; cutoff::Float64=1E-6)
-    vals = eigvals(Hermitian(RDM_A))
-    return sum(vals) do x
-        if abs(x) < cutoff || x < 0
-            return 0.0
-        end
-        -x * log2(x)
-    end
-end
-
-"""
-Calculate one-body reduced density matrix
-"""
-function one_body_reduced_density_matrix(psi::Vector{ComplexF64},
-                                        block_MBSList::Vector{MBS{bits}};
-                                        cutoff::Float64=1E-7) where {bits}
-    
-    bits_total = bits
-    sorted_state_num_list = getfield.(block_MBSList, :n)
-    
-    # Filter by cutoff
-    index_list = findall(x -> abs2(x) > cutoff, psi)
-    psi_filtered = psi[index_list]
-    num_list = sorted_state_num_list[index_list]
-    
-    # One-body RDM: ρ[i,j] = <c†_j c_i>
-    rdm = zeros(ComplexF64, bits_total, bits_total)
-    
-    Threads.@threads for i in 0:bits_total-1
-        for j in 0:bits_total-1
-            if i == j
-                # Diagonal: <n_i>
-                for (idx, num) in enumerate(num_list)
-                    if isodd(num >>> i)
-                        rdm[i+1, j+1] += abs2(psi_filtered[idx])
-                    end
-                end
-            else
-                # Off-diagonal: <c†_j c_i>
-                for (idx, num) in enumerate(num_list)
-                    if isodd(num >>> i) && iseven(num >>> j)
-                        new_num = num - (1 << i) + (1 << j)
-                        new_idx = my_searchsortedfirst(num_list, new_num)
-                        new_idx == 0 && continue
-                        
-                        sign_flip = sum(k -> (num >>> k) % 2, min(i,j)+1:max(i,j)-1; init=0)
-                        sign = isodd(sign_flip) ? -1 : 1
-                        
-                        rho_ij = sign * conj(psi_filtered[new_idx]) * psi_filtered[idx]
-                        rdm[i+1, j+1] += rho_ij
-                        rdm[j+1, i+1] += conj(rho_ij)
-                    end
-                end
-            end
-        end
-    end
-    
-    return rdm
-end
-
-
-
-=#

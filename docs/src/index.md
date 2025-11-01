@@ -176,16 +176,7 @@ Typical performance explodes exponentially with system size and particle number.
 
 ## Examples
 
-The package includes example notebooks in the "/examples/" folder.
-
-## Documentation
-
-Comprehensive documentation is available at:
-- [Documentation](https://Zou-Bo.github.io/MomentumED.jl/) (In construction)
-
-## Contribution
-
-Let me know if you have any problems in using the package or find bugs.
+The package includes example notebooks about ED calculation on Landau levels.
 
 ## License
 

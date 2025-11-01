@@ -12,6 +12,7 @@ It represents a general many-body state in the basis of the given `MBS64{bits}` 
 To save the memory usage, use the same `HilbertSubspace` for all `MBS64Vector`s in the same subspace.
 
 Constructor:
+
     MBS64Vector(vec::Vector{Complex{F}}, space::HilbertSubspace{bits}) where {bits, F <: AbstractFloat}
 
 Constructs an `MBS64Vector` from a vector of complex coefficients and a `HilbertSubspace`.

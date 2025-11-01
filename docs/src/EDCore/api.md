@@ -1,4 +1,4 @@
-# API
+# EDCore API Reference
 
 ## Many-Body Basis
 
@@ -28,6 +28,12 @@ Base.empty!(::MBS64{bits}, ::UInt64) where {bits}
 flip!
 scat_occ_number
 ``` 
+
+### Generating Sorted List
+```@docs
+ColexMBS64
+ColexMBS64Mask
+```
 
 
 ## Hilbert Subspace
@@ -71,8 +77,8 @@ LinearAlgebra.dot(::MBS64Vector{bits, F}, ::MBS64Vector{bits, F}) where {bits, F
 ### Types
 ```@docs
 Scatter
-Scatter(V, outin::Int64...)
 NormalScatter
+Scatter(V, outin::Int64...)
 Base.show(::IO, ::Scatter{N}) where {N}
 ```
 
@@ -115,3 +121,5 @@ Base.:*(::MBOperator, ::MBS64Vector)
 ED_bracket
 ED_bracket_threaded
 ``` 
+
+## End

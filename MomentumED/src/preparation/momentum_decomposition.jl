@@ -1,4 +1,3 @@
-
 """
 This file provides:
 Iterators over MBS64 combinations of `t` electrons in `n` states (in one component) in sorted order;
@@ -6,97 +5,6 @@ Recursive iteration function over multi-component MBS64 with given para and elec
 Generating Hilbert subspaces distinguished by total momentum using the previous function.
 """
 
-
-"""
-The Combinations iterator in colex order (meaning sorted MBS64 list)
-
-```julia
-for mbs in ColexMBS64(7, 3)
-    println(mbs)
-end
-```
-"""
-struct ColexMBS64
-    n::Int
-    t::Int
-end
-
-# Iteration
-@inline function Base.iterate(c::ColexMBS64) # starting point
-    try
-        @assert c.t >= 0
-        MBS64(c.n, 1:c.t)
-    catch
-        # @info "iteration $c is empty."
-        return
-    end
-    return (MBS64(c.n, 1:c.t), [collect(1:c.t); c.n+1])
-end
-@inline function Base.iterate(c::ColexMBS64, s)
-    if c.t == 0
-        return
-    end
-    for i in 1:c.t
-        if s[i] < s[i+1] -1
-            s[i] += 1
-            for j in 1:i-1
-                s[j] = j
-            end
-            return (MBS64(c.n, view(s, 1:c.t)), s)
-        end
-    end
-    return
-end
-
-"""
-The Combinations iterator in colex order where occupied orbitals are in the mask.
-Returning list is sorted when the mask is sorted.
-
-
-```julia
-for mbs in ColexMBS64Mask(7, 3, [1; 2; 5; 6; 7])
-    println(mbs)
-end
-```
-"""
-struct ColexMBS64Mask
-    n::Int
-    t::Int
-    mask::Vector{Int64}
-end
-
-# Iteration
-@inline function Base.iterate(c::ColexMBS64Mask) # starting point
-    try
-        @assert c.t >= 0
-        MBS64(c.n, 1:c.t, c.mask)
-    catch
-        # @info "iteration $c is empty."
-        return
-    end
-    return (MBS64(c.n, 1:c.t, c.mask), [collect(1:c.t); length(c.mask)+1])
-end
-@inline function Base.iterate(c::ColexMBS64Mask, s)
-    if c.t == 0
-        return
-    end
-    for i in 1:c.t
-        if s[i] < s[i+1] -1
-            s[i] += 1
-            for j in 1:i-1
-                s[j] = j
-            end
-            return (MBS64(c.n, view(s, 1:c.t), c.mask), s)
-        end
-    end
-    return
-end
-
-Base.length(c::ColexMBS64) = binomial(c.n, c.t)
-Base.length(c::ColexMBS64Mask) = binomial(length(c.mask), c.t)
-
-Base.eltype(c::ColexMBS64) = MBS64{c.n}
-Base.eltype(c::ColexMBS64Mask) = MBS64{c.n}
 
 """
     mbslist_onecomponent(para::EDPara, N_in_one::Int64[, mask])
@@ -131,43 +39,6 @@ function mbslist_onecomponent(para::EDPara, N_in_one::Int64, mask::Union{Nothing
     @assert isempty(mask) || 1 <= minimum(mask) && maximum(mask) <= Nstate "Invalid orbital index in mask for one component, mask=$mask, Nstate=$Nstate"
     return ColexMBS64Mask(Nstate, N_in_one, mask)
 end
-
-# """
-#     ED_mbslist(para::EDPara, N_each_component::NTuple{N, Int64}) where {N}
-
-# Construct a list of MBS with electron numbers (N1, N2, ...) in each conserved component.
-
-# Generates the complete Hilbert space basis by taking the Kronecker product of
-# single-component bases, ensuring the correct particle number in each conserved
-# component.
-
-# # Arguments
-# - `para::EDPara`: Parameter structure containing momentum and component information
-# - `N_each_component::NTuple{N, Int64}`: Tuple of particle numbers for each conserved component
-
-# # Returns
-# - `Vector{MBS64}`: Complete basis of MBS64 states with specified particle distribution
-
-# # Example
-# ```julia
-# para = EDPara(k_list=[0 1; 0 0], Nc_hopping=1, Nc_conserve=2)
-# states = ED_mbslist(para, (1, 1))  # 1 particle in each of 2 conserved components
-# ```
-
-# # Notes
-# Uses Kronecker product to combine states from different conserved components.
-# The total dimension is the product of individual component dimensions.
-# """
-# function ED_mbslist(para::EDPara, N_each_component::NTuple{N, Int64}) where {N}
-#     @assert N == para.Nc_conserve "The length of number_list must be equal to the number of conserved components $(para.Nc_conserve)"
-#     list = ED_mbslist_onecomponent(para, N_each_component[begin])
-#     for i in eachindex(N_each_component)[2:end]
-#         list = kron(ED_mbslist_onecomponent(para, N_each_component[i]), list)
-#     end
-#     return list
-# end
-
-
 
 """
     MBS_totalmomentum(para::EDPara, mbs::MBS64)
@@ -207,8 +78,6 @@ function MBS_totalmomentum(para::EDPara, i_list::Int64...)
     iszero(Gk[2]) || (k2 = mod(k2, Gk[2]))
     return k1, k2
 end
-
-global PRINT_RECURSIVE_MOMENTUM_DIVISION::Bool = false
 
 """
     mbslist_recursive_iteration!(subspaces, subspace_k1, subspace_k2, para, N_each_component, accumulated_mbs, accumulated_momentum; mask=nothing)

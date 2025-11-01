@@ -11,7 +11,17 @@
 
 Stores all parameters for a momentum-conserved exact diagonalization calculation.
 
-The constructor is keyword-based.
+# Constructor
+
+    EDPara(; 
+        Gk::Tuple{Int64, Int64} = (0, 0), 
+        k_list::Matrix{Int64},
+        Nc_hopping::Int64 = 1,
+        Nc_conserve::Int64 = 1,
+        H_onebody::Array{ComplexF64,4} = zeros(ComplexF64, Nc_hopping, Nc_hopping, Nc_conserve, size(k_list, 2)),
+        V_int::Function = (kf1, kf2, ki1, ki2, cf1, cf2, ci1, ci2) -> 0.0 + 0.0im,
+        FF_inf_angle::Function = (k_f, k_i, c) -> 0.0
+    )
 
 # Keyword Arguments
 - `k_list::Matrix{Int64}`: **Required**. A matrix where each column `k_list[:, i]` represents a momentum vector `(k_x, k_y)`.

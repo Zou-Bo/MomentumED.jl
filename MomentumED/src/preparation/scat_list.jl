@@ -100,8 +100,6 @@ function group_momentum_pairs(para::EDPara)
     return momentum_groups
 end
 
-global PRINT_TWOBODY_SCATTER_PAIRS::Bool = false
-
 """
     scat_pair_group_coordinate(pair_group, para, shifts) -> Vector{Scatter{2}}
 
