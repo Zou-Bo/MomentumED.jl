@@ -228,12 +228,12 @@ function ED_momentum_subspaces(para::EDPara, N_each_component;
         if !iszero(Gk[1])
             k1min, k1max = (0, Gk[1]-1)
         else
-            k1min, k1max = extrema(k_list[1,:]) .* sum(N_each_component)
+            k1min, k1max = extrema(para.k_list[1,:]) .* sum(N_each_component)
         end
         if !iszero(Gk[2])
             k2min, k2max = (0, Gk[2]-1)
         else
-            k2min, k2max = extrema(k_list[2,:]) .* sum(N_each_component)
+            k2min, k2max = extrema(para.k_list[2,:]) .* sum(N_each_component)
         end
     end
 
