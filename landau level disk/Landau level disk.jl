@@ -4,10 +4,12 @@ module LLD
     using ClassicalOrthogonalPolynomials: laguerrel
     using QuadGK
     using MomentumED
-    using MomentumED.EDCore.Combinatorics
+    using EDCore.Combinatorics
 
     export AngularComponentList, AngularLandauInteraction
+    export generate_Coulomb_interaction
     export Landau_ff_inf, density_operator
+
 
     # Global variables, usually no need to change
     const W0::Float64 = 1.0                     # Interaction strength (energy unit)
@@ -108,7 +110,7 @@ module LLD
             M_com = M - m_r
             m_less, m_greater = minmax(m1, m2)
             M_less, M_greater = minmax(M_com, m_r)
-            prefactor = sqrt(factorial(M_greater, m_less) / bimonial(m_greater, M_less))
+            prefactor = sqrt(factorial(M_greater, m_less) / factorial(m_greater, M_less))
             for k in 0:M
                 V_m[1+m_r] += (-1)^(m_r-m1+k) * binomial(m1, k) * binomial(m2, M_com - k)
             end
@@ -123,7 +125,7 @@ module LLD
 
         m_r_cutoff = min(mi1 + mi2, length(V_m)-1)
         CGi = Clebsch_Gordan_2D(mi1, mi2, m_r_cutoff)
-        CGf = Clebsch_Gordan_2D(mif, mif, m_r_cutoff)
+        CGf = Clebsch_Gordan_2D(mf1, mf2, m_r_cutoff)
         return sum(conj.(CGf) .* view(V_m, 1:m_r_cutoff+1) .* CGi)
     end
 
@@ -154,20 +156,20 @@ module LLD
     # always call this to convert coulomb into V_m
     function generate_Coulomb_interaction(ALI::AngularLandauInteraction, m_cutoff::Int64)::Nothing
         ALI.V_intra_Coulomb = pseudo_potential_decomposition.(0:m_cutoff;
-            samelayer = true, d_l = ALI.d_l, D_l = ALI.D_l
+            same_layer = true, d_l = ALI.d_l, D_l = ALI.D_l
         )
         if iszero(ALI.d_l)
             ALI.V_inter_Coulomb = ALI.V_intra_Coulomb
         else
             ALI.V_inter_Coulomb = pseudo_potential_decomposition.(0:m_cutoff;
-                samelayer = false, d_l = ALI.d_l, D_l = ALI.D_l
+                same_layer = false, d_l = ALI.d_l, D_l = ALI.D_l
             )
         end
         return
     end
 
     function (V_int::AngularLandauInteraction)(
-        kf1::Tuple{Int64,Int64}, kf2::Tuple{Int64,Int64}, ki2::Tuple{Int64,Int64}, ki1::Tuple{Int64,Int64}, 
+        kf1::Tuple{<:Real,<:Real}, kf2::Tuple{<:Real,<:Real}, ki2::Tuple{<:Real,<:Real}, ki1::Tuple{<:Real,<:Real}, 
         cf1::Int64 = 1, cf2::Int64 = 1, ci2::Int64 = 1, ci1::Int64 = 1
     )::ComplexF64
         
@@ -200,18 +202,21 @@ module LLD
         mf1 = Int64(kf1[1])
         mf2 = Int64(kf2[1])
         mi2 = Int64(ki2[1])
-        mi1 = Int64(k21[1])
+        mi1 = Int64(ki1[1])
 
         if li1 ==li2
-            V_H = interaction_amplitude(V_intra, mf1, mf2, mi2, mi1)
-            V_C = interaction_amplitude(V_intra_Coulomb, mf1, mf2, mi2, mi1)
+            V_H = interaction_amplitude(V_int.V_intra, mf1, mf2, mi2, mi1)
+            V_C = interaction_amplitude(V_int.V_intra_Coulomb, mf1, mf2, mi2, mi1)
         else
-            V_H = interaction_amplitude(V_inter, mf1, mf2, mi2, mi1)
-            V_C = interaction_amplitude(V_inter_Coulomb, mf1, mf2, mi2, mi1)
+            V_H = interaction_amplitude(V_int.V_inter, mf1, mf2, mi2, mi1)
+            V_C = interaction_amplitude(V_int.V_inter_Coulomb, mf1, mf2, mi2, mi1)
         end
 
         # mixed Coulomb and Haldane interaction
-        return V_C + V_int.mix * (V_H - V_C)
+        V = V_C + V_int.mix * (V_H - V_C)
+        V /= 2^(mf1+mf2)
+
+        return V
     end
 
 

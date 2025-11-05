@@ -14,9 +14,9 @@ function OES_NumMomtBlocks(para::EDPara, orb_list,
     maskB = occ_list(maskB_mbs)
 
     # collect results of blocks with different numbers
-        lengthA = zeros(Int64, para.Nc_conserve)
+    lengthA = zeros(Int64, para.Nc_conserve)
     for i in maskA
-        c = fld1(i, bits) 
+        c = fld1(i, para.Nk * para.Nc_hopping) 
         lengthA[c] += 1
     end
     number_block_size = min.(lengthA, Ne) .+ 1
