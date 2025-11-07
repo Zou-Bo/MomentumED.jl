@@ -41,7 +41,8 @@ This project provides a powerful and flexible framework for exact diagonalizatio
 
 ## Installation
 
-This project contains two packages: `EDCore` and `MomentumED`. Since they are not yet registered and `MomentumED` depends on the local version of `EDCore`, the installation process requires you to clone the repository first.
+This project contains two packages: `EDCore` and `MomentumED`. `MomentumED` depends on `EDCore`. 
+One can simply clone the repository with the Landau level examples which will use the local version in the downloaded files.
 
 1.  **Clone the repository:**
     ```sh
@@ -57,7 +58,8 @@ This project contains two packages: `EDCore` and `MomentumED`. Since they are no
     ```
     This will install the packages from their local subdirectories, allowing Julia to correctly resolve the dependency between them.
 
-Once the packages are registered in the Julia General Registry, you will be able to install them simply with `Pkg.add("MomentumED")`.
+The packages are registered in the Julia General Registry, you are able to install them simply with `Pkg.add("MomentumED")`.
+Then you can still run the Landau level examples with the added versions of packages.
 
 ## Structure and Dependency
 

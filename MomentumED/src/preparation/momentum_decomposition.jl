@@ -62,11 +62,13 @@ end
 MBS_totalmomentum(para::EDPara, mbs::MBS64) = MBS_totalmomentum(para.k_list, para.Gk, mbs; Nk = para.Nk)
 
 """
-    MBS_totalmomentum(para::EDPara, i_list::Int64...)
+    MBS_totalmomentum(para::EDPara, i_list::Tuple{Vararg{Int64}})
 
 Calculate the total momentum (K1, K2) from a list of occupied orbital indices.
+`i_list` can contain repeated numbers,
+and the momentum of that orbital will be added multiple times.
 """
-function MBS_totalmomentum(para::EDPara, i_list::Int64...)
+function MBS_totalmomentum(para::EDPara, i_list::Tuple{Vararg{Int64}})::NTuple{2, Int64}
     # momentum are integers
     k1 = 0; k2 = 0; Gk = para.Gk
     for i in i_list

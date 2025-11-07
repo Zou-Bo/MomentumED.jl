@@ -3,6 +3,7 @@ module LLT
 
     using ClassicalOrthogonalPolynomials: laguerrel
     using QuadGK
+    # using ArbNumerics: ArbComplex, weierstrass_sigma, weierstrass_zeta
 
     export ReciprocalLattice, ComponentList, LandauInteraction
     export Landau_ff_inf, density_operator
@@ -12,6 +13,22 @@ module LLT
     const l::Float64 = 1.0                      # Magnetic Length (length/momentum unit)
     Gl_cutoff::Float64 = 10.0                   # number of shells (|Gl| <= Gl_cutoff) included in the interaction 
     PRINT_INT_DETAIL::Bool = false              # print the details in calculating the interaction
+
+    # "Weierstrass zeta wrapped from ArbNumerics"
+    # wζ(z, tau) = ComplexF64(weierstrass_zeta(ArbComplex(z), ArbComplex(tau)))
+    # "Weierstrass sigma wrapped from ArbNumerics"
+    # wσ(z, tau) = ComplexF64(weierstrass_sigma(ArbComplex(z), ArbComplex(tau)))
+    # "γ2 parameter for a given lattice complex {a1, a2}"
+    # function _γ2(a1::ComplexF64, a2::ComplexF64)
+    #     tau = a2/a1
+    #     η1 = wζ(0.5, tau)
+    #     γ2 = (η1 - π*0.5/imag(tau)) / 0.5
+    #     return γ2
+    # end
+    # "n=0 Landau level quasi-Bloch wavefunction in symmetric gauge with input nomalizer"
+    # function _WF(r1, r2, k1, k2; a1, a2, γ2, normalizer)
+    
+    # end
 
     struct ReciprocalLattice
         G1::ComplexF64
@@ -39,6 +56,18 @@ module LLT
             throw(AssertionError("Symbol construction is for :square or :triangular, use ratio-angle construction instead."))
         end
     end
+
+    # "n=0 Landau level quasi-Bloch wavefunction in symmetric gauge."
+    # function WF(x::Float64, y::Float64, 
+    #     k::Tuple{<:Real, <:Real}, lattice::ReciprocalLattice
+    #     )::ComplexF64
+
+    #     return _WF(r1, r2, k1, k2; 
+    #         a1=sys_para.a1, a2=sys_para.a2, 
+    #         γ2=sys_para.γ2, normalizer=sys_para.WF_nmlz
+    #     )
+    # end
+
 
     # a list of component (layer, level, Chern number, other/pseudospin)
     # layer can only be 1 or 2; Chern number can only be 1 or -1

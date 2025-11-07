@@ -74,14 +74,13 @@ function (A::LinearMap{bits, F})(y::Vector{Complex{F}}, x::Vector{Complex{F}}) w
     end
 
     y .= zero(Complex{F})
-    list::Vector{MBS64{bits}} = A.space.list
     for scat_list in A.scat_lists
-        Threads.@threads for i in eachindex(list)
+        Threads.@threads for i in eachindex(A.space.list)
             for scat in scat_list
-                amp, mbs_in = list[i] * scat
+                amp, mbs_in = A.space.list[i] * scat
                 if amp != 0.0
                     j = get(A.space, mbs_in)
-                    @assert i != 0 "H is not momentum- or component-conserving."
+                    @boundscheck @assert j != 0 "H is not momentum- or component-conserving."
                     y[i] += amp * x[j]
                 end
             end
@@ -97,14 +96,13 @@ function (A::AdjointLinearMap{bits, F})(y::Vector{Complex{F}}, x::Vector{Complex
     end
 
     y .= zero(Complex{F})
-    list::Vector{MBS64{bits}} = A.space.list
     for scat_list in A.scat_lists
-        Threads.@threads for i in eachindex(list)
+        Threads.@threads for i in eachindex(A.space.list)
             for scat in scat_list
-                amp, mbs_in = scat * list[i] # adjoint operator: inversely find the mbs_in 
+                amp, mbs_in = scat * A.space.list[i] # adjoint operator: inversely find the mbs_in 
                 if amp != 0.0
                     j = get(A.space, mbs_in)
-                    @assert i != 0 "H is not momentum- or component-conserving."
+                    @boundscheck @assert j != 0 "H is not momentum- or component-conserving."
                     y[i] += conj(amp) * x[j] # adjoint operator: conj(amplitute)
                 end
             end
@@ -113,17 +111,17 @@ function (A::AdjointLinearMap{bits, F})(y::Vector{Complex{F}}, x::Vector{Complex
 
 end
 
-# function (A::LinearMap{bits, F})(x::Vector{Complex{F}})::Vector{Complex{F}} where {bits, F}
-#     y = similar(x)
-#     A(y, x)
-#     return y
-# end
+function (A::LinearMap{bits, F})(x::Vector{Complex{F}})::Vector{Complex{F}} where {bits, F}
+    y = similar(x)
+    A(y, x)
+    return y
+end
 
-# function (A::AdjointLinearMap{bits, F})(x::Vector{Complex{F}})::Vector{Complex{F}} where {bits, F}
-#     y = similar(x)
-#     A(y, x)
-#     return y
-# end
+function (A::AdjointLinearMap{bits, F})(x::Vector{Complex{F}})::Vector{Complex{F}} where {bits, F}
+    y = similar(x)
+    A(y, x)
+    return y
+end
 
 
 
@@ -168,7 +166,7 @@ function krylov_map_solve(
     ishermitian::Bool = true, krylovkit_kwargs...
 )::Tuple{Vector{eltype}, Vector{Vector{Complex{eltype}}}, Any} where {bits, eltype<:AbstractFloat}
 
-    m = length(space)
+    m = length(H.space)
     vec0 = rand(Complex{eltype}, m)
     N_eigen = min(N_eigen, m)
     eigsolve(H, vec0, N_eigen, :SR; ishermitian, krylovkit_kwargs...)

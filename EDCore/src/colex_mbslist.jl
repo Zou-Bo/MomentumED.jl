@@ -1,4 +1,3 @@
-
 """
 The Combinations iterator in colex order (meaning sorted MBS64 list)
 
@@ -43,7 +42,6 @@ end
 """
 The Combinations iterator in colex order where occupied orbitals are in the mask.
 Returning list is sorted when the mask is sorted.
-
 
 ```julia
 for mbs in ColexMBS64Mask(7, 3, [1; 2; 5; 6; 7])

@@ -78,7 +78,8 @@ groups = group_momentum_pairs(para)
 pairs_with_zero_momentum = groups[(0, 0)]
 ```
 """
-function group_momentum_pairs(para::EDPara)
+function group_momentum_pairs(para::EDPara;
+    momentum_transformation::Union{Nothing, Function} = nothing)
     
     # Dictionary to store momentum groups
     momentum_groups = Dict{Tuple{Int64,Int64}, Vector{Tuple{Int64,Int64}}}()
@@ -86,9 +87,9 @@ function group_momentum_pairs(para::EDPara)
     # Generate all possible pairs (including identical pairs)
     for i in 1:para.Nk, j in 1:i  # i >= j to avoid duplicates
         # Calculate total momentum using existing function
-        K_total = MBS_totalmomentum(para, i, j)
         pair_indices = (i, j)
-        
+        K_total = MBS_totalmomentum(para, pair_indices)
+
         # Add to appropriate group
         if haskey(momentum_groups, K_total)
             push!(momentum_groups[K_total], pair_indices)
@@ -97,7 +98,11 @@ function group_momentum_pairs(para::EDPara)
         end
     end
     
-    return momentum_groups
+    if isnothing(momentum_transformation)
+        return momentum_groups
+    else
+        # what should it do?
+    end
 end
 
 """
@@ -345,9 +350,10 @@ Scatter2_shifted = ED_sortedScatterList_twobody(para; kshift=(0.1, 0.1))
 ```
 """
 function ED_sortedScatterList_twobody(para::EDPara; 
+    momentum_transformation::Union{Nothing, Function} = nothing,
     kshift = nothing)::Vector{Scatter{2}}
 
-    momentum_groups = group_momentum_pairs(para)
+    momentum_groups = group_momentum_pairs(para; momentum_transformation)
     
     sct_list2 = Vector{Scatter{2}}()
     if para.momentum_coordinate
