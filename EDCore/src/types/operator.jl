@@ -1,15 +1,15 @@
 using LinearAlgebra
 
 """
-    struct MBOperator
-        scats::Vector{Vector{<:Scatter}}
+    struct MBOperator{T <: Tuple{Vararg{Vector{<:Scatter}}}}
+        scats::T
         upper_hermitian::Bool
     end
 
 Represents a many-body operator as a list of lists of `Scatter` terms.
 
 # Fields
-- `scats::Vector{Vector{<:Scatter}}`: A vector of vectors, where each inner vector contains `Scatter{N}` terms.
+- `scats::Tuple{Vararg{Vector{<:Scatter}}}`: A Tuple of vectors, where each inner vector contains `Scatter{N}` terms.
 - `upper_hermitian::Bool`: Indicates whether the operator is upper Hermitian, affecting how terms are handled.
 
 In the construction of operators, all `Scatter` terms are automatically reorganized by their body number.
@@ -23,8 +23,8 @@ Terms of the same body number are sorted
 Constructs an `MBOperator` from input `Scatter` terms.
 The `upper_hermitian` flag determines how scattering terms are sorted and merged.
 """
-struct MBOperator
-    scats::Vector{Vector{<:Scatter}}
+struct MBOperator{T <: Tuple{Vararg{Vector{<:Scatter}}}}
+    scats::T
     upper_hermitian::Bool
 
     function MBOperator(scats::Vector{Vector{<:Scatter}}; upper_hermitian::Bool)
@@ -32,7 +32,8 @@ struct MBOperator
             check_normal = !upper_hermitian, 
             check_normalupper = upper_hermitian
         )
-        return new(sort_merge_scats, upper_hermitian)
+        sort_merge_scats_tuple = Tuple(sort_merge_scats)
+        return new{typeof(sort_merge_scats_tuple)}(sort_merge_scats_tuple, upper_hermitian)
     end
     function MBOperator(scats::Vector{<: Scatter}...; upper_hermitian::Bool)
         allscats = Vector{Vector{<:Scatter}}(undef, 0)
@@ -65,14 +66,14 @@ function Base.show(io::IO, op::MBOperator)
 end
 
 """
-    adjoint!(op::MBOperator)::MBOperator
+    adjoint!(op::MBOperator{T})::MBOperator{T}
 
 Computes the adjoint of the operator `op` in-place.
 If the operator is not upper Hermitian, it adjoints each scattering term.
 """
-function adjoint!(op::MBOperator)::MBOperator
+function adjoint!(op::MBOperator{T})::MBOperator{T} where {T <: Tuple{Vararg{Vector{<:Scatter}}}}
     if !isupper(op)
-        for scat_list in op.scats
+        foreach( op.scats ) do scat_list
             for i in eachindex(scat_list)
                 scat_list[i] = adjoint(scat_list[i])
             end
@@ -82,11 +83,11 @@ function adjoint!(op::MBOperator)::MBOperator
 end
 
 """
-    adjoint(op::MBOperator)::MBOperator
+    adjoint(op::MBOperator{T})::MBOperator{T}
 
 Computes the adjoint of the operator `op` by creating a deep copy and then applying `adjoint!`.
 """
-function adjoint(op::MBOperator)::MBOperator
+function adjoint(op::MBOperator{T})::MBOperator{T} where {T <: Tuple{Vararg{Vector{<:Scatter}}}}
     op_new = deepcopy(op)
     return adjoint!(op_new)
 end

@@ -95,7 +95,8 @@ end
 
 
 """
-Multiply a Scatter{N} term on MBS64Vector and add on the collect_result. 
+Multiply a `Vector{Scatter{N}}` list on MBS64Vector and add on the collect_result. 
+N is known by compiler.
 
 Core function for MBOperator * MBS64Vector.
 It convinces the Julia compiler to use stack instead of heap.
@@ -103,19 +104,21 @@ It convinces the Julia compiler to use stack instead of heap.
 Notice: no checking whether collect_result and mbs_vec are in the same Hilbert space
 """
 function mul_add!(collect_result::MBS64Vector{bits, eltype},
-    scat::Scatter{N}, mbs_vec::MBS64Vector{bits, eltype},
+    scat_list::Vector{Scatter{N}}, mbs_vec::MBS64Vector{bits, eltype},
     upper_hermitian::Bool) where{N, bits, eltype <: AbstractFloat}
 
-    # for (mbs_in, j) in mbs_vec.space.dict
-    for (j, mbs_in) in enumerate(mbs_vec.space.list)
-        amp, mbs_out = scat * mbs_in
-        iszero(amp) && continue
-        i = get(collect_result.space, mbs_out)
-        @boundscheck if iszero(i)
-            throw(DimensionMismatch("The operator scatters the state out of its Hilbert subspace."))
+    for scat in scat_list
+        # for (mbs_in, j) in mbs_vec.space.dict
+        for (j, mbs_in) in enumerate(mbs_vec.space.list)
+            amp, mbs_out = scat * mbs_in
+            iszero(amp) && continue
+            i = get(collect_result.space, mbs_out)
+            @boundscheck if iszero(i)
+                throw(DimensionMismatch("The operator scatters the state out of its Hilbert subspace."))
+            end
+            collect_result.vec[i] += amp * mbs_vec.vec[j]
+            upper_hermitian && i != j && (collect_result.vec[j] += conj(amp) * mbs_vec.vec[i])
         end
-        collect_result.vec[i] += amp * mbs_vec.vec[j]
-        upper_hermitian && i != j && (collect_result.vec[j] += conj(amp) * mbs_vec.vec[i])
     end
 end
 
@@ -123,14 +126,12 @@ end
 Use mul_add!() to avoid heap allocation.
 """
 function mul!(mbs_vec_result::MBS64Vector{bits, eltype}, 
-    op::MBOperator, mbs_vec::MBS64Vector{bits, eltype}
-    ) where {bits, eltype <: AbstractFloat}
+    op::MBOperator{T}, mbs_vec::MBS64Vector{bits, eltype}
+    ) where {bits, eltype <: AbstractFloat, T <: Tuple{Vararg{Vector{<:Scatter}}}}
     
     mbs_vec_result.vec .= 0.0
-    for scat_list in op.scats
-        for scat in scat_list
-            mul_add!(mbs_vec_result, scat, mbs_vec, op.upper_hermitian)
-        end
+    foreach(op.scats) do scat_list
+        mul_add!(mbs_vec_result, scat_list, mbs_vec, op.upper_hermitian)
     end
 end
 
@@ -278,12 +279,30 @@ Compute the bracket <bra::MBS64Vector | op::MBOperator | ket::MBS64Vector>\n
 or the bracket <bra::MBS64Vector | op2::MBOperator * op1::MBOperator | ket::MBS64Vector>
 """
 function ED_bracket(mbs_vec_bra::MBS64Vector{bits, eltype}, 
-    op::MBOperator, mbs_vec_ket::MBS64Vector{bits, eltype}
-    )::Complex{eltype} where {bits, eltype <: AbstractFloat}
+    op::MBOperator{T}, mbs_vec_ket::MBS64Vector{bits, eltype}
+    )::Complex{eltype} where {bits, eltype <: AbstractFloat, T <: Tuple{Vararg{Vector{<:Scatter}}}}
 
     bracket = Complex{eltype}(0.0)
-    for scat_list in op.scats
+    foreach(op.scats) do scat_list
         bracket += mul_add_bracket_scatlist(mbs_vec_bra, scat_list, mbs_vec_ket, op.upper_hermitian)
+    end
+    return bracket
+end
+function ED_bracket(mbs_vec_bra::MBS64Vector{bits, eltype}, 
+    op2::MBOperator{T2}, op1::MBOperator{T1}, mbs_vec_ket::MBS64Vector{bits, eltype}
+    )::Complex{eltype} where {bits, eltype <: AbstractFloat, 
+    T2 <: Tuple{Vararg{Vector{<:Scatter}}}, T1 <: Tuple{Vararg{Vector{<:Scatter}}}}
+
+    if op1.upper_hermitian || op2.upper_hermitian
+        println("one-by-one multiplication")
+        return ED_bracket(mbs_vec_bra, op2, op1*mbs_vec_ket)
+    end 
+
+    bracket = Complex{eltype}(0.0)
+    foreach(op1.scats) do scat_list1
+        foreach(op2.scats) do scat_list2
+            bracket += mul_add_bracket_scatlist(mbs_vec_bra, scat_list2, scat_list1, mbs_vec_ket)
+        end
     end
     return bracket
 end
@@ -299,33 +318,19 @@ end
 or the bracket <bra::MBS64Vector | op2::MBOperator * op1::MBOperator | ket::MBS64Vector>
 """
 function ED_bracket_threaded(mbs_vec_bra::MBS64Vector{bits, eltype},
-    op::MBOperator, mbs_vec_ket::MBS64Vector{bits, eltype}
-    )::Complex{eltype} where {bits, eltype <: AbstractFloat}
+    op::MBOperator{T}, mbs_vec_ket::MBS64Vector{bits, eltype}
+    )::Complex{eltype} where {bits, eltype <: AbstractFloat, T <: Tuple{Vararg{Vector{<:Scatter}}}}
 
     bracket = Complex{eltype}(0.0)
-    for scat_list in op.scats
+    foreach(op.scats) do scat_list
         bracket += mul_add_bracket_scatlist_threaded(mbs_vec_bra, scat_list, mbs_vec_ket, op.upper_hermitian)
     end
     return bracket
 end
-function ED_bracket(mbs_vec_bra::MBS64Vector{bits, eltype}, 
-    op2::MBOperator, op1::MBOperator, mbs_vec_ket::MBS64Vector{bits, eltype}
-    )::Complex{eltype} where {bits, eltype <: AbstractFloat}
-
-    if op1.upper_hermitian || op2.upper_hermitian
-        println("one-by-one multiplication")
-        return ED_bracket(mbs_vec_bra, op2, op1*mbs_vec_ket)
-    end 
-
-    bracket = Complex{eltype}(0.0)
-    for scat_list1 in op1.scats, scat_list2 in op2.scats
-        bracket += mul_add_bracket_scatlist(mbs_vec_bra, scat_list2, scat_list1, mbs_vec_ket)
-    end
-    return bracket
-end
 function ED_bracket_threaded(mbs_vec_bra::MBS64Vector{bits, eltype},
-    op2::MBOperator, op1::MBOperator, mbs_vec_ket::MBS64Vector{bits, eltype}
-    )::Complex{eltype} where {bits, eltype <: AbstractFloat}
+    op2::MBOperator{T2}, op1::MBOperator{T1}, mbs_vec_ket::MBS64Vector{bits, eltype}
+    )::Complex{eltype} where {bits, eltype <: AbstractFloat,
+    T1 <: Tuple{Vararg{Vector{<:Scatter}}}, T2 <: Tuple{Vararg{Vector{<:Scatter}}}}
     
     if op1.upper_hermitian || op2.upper_hermitian
         println("one-by-one multiplication")
@@ -333,8 +338,10 @@ function ED_bracket_threaded(mbs_vec_bra::MBS64Vector{bits, eltype},
     end
     
     bracket = Complex{eltype}(0.0)
-    for scat_list1 in op1.scats, scat_list2 in op2.scats
-        bracket += mul_add_bracket_scatlist_threaded(mbs_vec_bra, scat_list2, scat_list1, mbs_vec_ket)
+    foreach(op1.scats) do scat_list1
+        foreach(op2.scats) do scat_list2
+            bracket += mul_add_bracket_scatlist_threaded(mbs_vec_bra, scat_list2, scat_list1, mbs_vec_ket)
+        end
     end
     return bracket
 end
