@@ -111,7 +111,8 @@ function mbslist_recursive_iteration!(subspaces::Vector{HilbertSubspace{bits}},
     accumulated_mbs::MBS64 = reinterpret(MBS64{0}, 0), 
     accumulated_momentum::Tuple{Int64, Int64} = (0, 0); 
     mask::Union{Nothing, Vector{Int64}} = nothing,
-    check_mask_sorted::Bool = false
+    check_mask_sorted::Bool = false,
+    selection_rule::Function = Returns(true),
 ) where {bits}
 
     if check_mask_sorted && !isnothing(mask)
@@ -132,7 +133,8 @@ function mbslist_recursive_iteration!(subspaces::Vector{HilbertSubspace{bits}},
                     N_each_component[begin:end-1],          # remaining components
                     accumulated_mbs * mbs_smaller,          # updated MBS64
                     accumulated_momentum .+ new_momentum;   # updated momentum 
-                    mask = mask[begin:i]
+                    mask = mask[begin:i], 
+                    selection_rule
                 )
             end
         else
@@ -143,20 +145,23 @@ function mbslist_recursive_iteration!(subspaces::Vector{HilbertSubspace{bits}},
                     N_each_component[begin:end-1],          # remaining components
                     accumulated_mbs * mbs_smaller,          # updated MBS64
                     accumulated_momentum .+ new_momentum;   # updated momentum 
-                    mask = nothing
+                    mask = nothing, 
+                    selection_rule
                 )
             end
         end
 
     else
-        k1, k2 = accumulated_momentum
-        Gk = para.Gk
-        iszero(Gk[1]) || (k1 = mod(k1, Gk[1]))
-        iszero(Gk[2]) || (k2 = mod(k2, Gk[2]))
-        PRINT_RECURSIVE_MOMENTUM_DIVISION && println("\tfinally: momentum $k1, $k2\t$accumulated_mbs")
-        index = findfirst((subspace_k1 .== k1) .& (subspace_k2 .== k2))
-        if index !== nothing
-            push!(subspaces[index].list, accumulated_mbs)
+        if selection_rule(accumulated_mbs)
+            k1, k2 = accumulated_momentum
+            Gk = para.Gk
+            iszero(Gk[1]) || (k1 = mod(k1, Gk[1]))
+            iszero(Gk[2]) || (k2 = mod(k2, Gk[2]))
+            PRINT_RECURSIVE_MOMENTUM_DIVISION && println("\tfinally: momentum $k1, $k2\t$accumulated_mbs")
+            index = findfirst((subspace_k1 .== k1) .& (subspace_k2 .== k2))
+            if !isnothing(index)
+                push!(subspaces[index].list, accumulated_mbs)
+            end
         end
     end
 end
