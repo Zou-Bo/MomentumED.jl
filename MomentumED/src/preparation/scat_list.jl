@@ -138,8 +138,8 @@ function scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para
     sys_size = (Gk1 != 0 && Gk2 != 0) ? Nk : 1
 
     if T <: Integer || T <: Rational
-        klist = para.k_list // 1
-        kshift = shifts // 1
+        klist = copy(para.k_list) // 1
+        kshift = copy(shifts) // 1
         if Gk1 != 0
             klist[1, :] .//= Gk1
             kshift[1, :] .//= Gk1
@@ -149,8 +149,8 @@ function scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para
             kshift[2, :] .//= Gk2
         end
     else
-        klist = float(para.k_list)
-        kshift = float(shifts)
+        klist = float.(copy(para.k_list))
+        kshift = float.(copy(shifts))
         if Gk1 != 0
             klist[1, :] ./= Gk1
             kshift[1, :] ./= Gk1
