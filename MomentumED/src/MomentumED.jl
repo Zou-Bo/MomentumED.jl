@@ -156,7 +156,7 @@ This function finds the lowest eigenvalues and eigenvectors of a Hamiltonian wit
 
 # Examples
 
-**1. Using Scatter Lists (Sparse Method):**
+**1. Using Scatter Lists (Sparse Matrix Method):**
 ```julia
 subspaces, _, _ = ED_momentum_subspaces(para, (1,1))
 scat1 = ED_sortedScatterList_onebody(para)
@@ -166,7 +166,7 @@ scat2 = ED_sortedScatterList_twobody(para)
 energies, vecs = EDsolve(subspaces[1], scat1, scat2; N=2, method=:sparse)
 ```
 
-**2. Using MBOperator (Linear Map Method):**
+**2. Using MBOperator (Sparse Matrix or Linear Map Method):**
 ```julia
 H_op = MBOperator(scat1, scat2)
 # Find the 2 lowest energy states using the matrix-free approach
@@ -180,6 +180,7 @@ function EDsolve(subspace::HilbertSubspace{bits}, sorted_scat_lists::Vector{<: S
     ishermitian::Bool = true, krylovkit_kwargs...
     ) where {bits}
 
+    @assert N >= 1
 
     if method == :map
 
@@ -212,6 +213,8 @@ function EDsolve(subspace::HilbertSubspace{bits}, sorted_scat_lists::Vector{<: S
 
         if method == :sparse
 
+            @assert N <= length(subspace)
+
             # Solve the eigenvalue problem
             if showtime
                 @time vals, vecs, _ = krylov_matrix_solve(H, N; ishermitian, krylovkit_kwargs...)
@@ -219,6 +222,9 @@ function EDsolve(subspace::HilbertSubspace{bits}, sorted_scat_lists::Vector{<: S
                 vals, vecs, _ = krylov_matrix_solve(H, N; ishermitian, krylovkit_kwargs...)
             end
 
+            if length(vals) < N
+                error("Krylov method fails. Cannot find $N eigenvectors.")
+            end
             energies = vals[1:N]
             vectors = [MBS64Vector(vecs[i], subspace) for i in 1:N]
 
