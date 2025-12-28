@@ -26,7 +26,7 @@ export ED_sortedScatterList_onebody
 export ED_sortedScatterList_twobody
 
 # methods
-public ED_HamiltonianMatrix_threaded, LinearMap
+public SparseHmltMatrix, LinearMap
 
 # analysis - reduced density matrix for entanglement spectrum
 export PES_1rdm, PES_MomtBlocks, PES_MomtBlock_rdm
@@ -68,7 +68,7 @@ export ED_sortedScatterList_onebody
 export ED_sortedScatterList_twobody
 
 # methods
-public ED_HamiltonianMatrix_threaded, LinearMap
+public SparseHmltMatrix, LinearMap
 
 # analysis - reduced density matrix for entanglement spectrum
 export PES_1rdm, PES_MomtBlocks, PES_MomtBlock_rdm
@@ -109,7 +109,7 @@ This module provides methods of generating Hamiltonian sparse matrix or Hamilton
 and use KrylovKit to solve them.
 """
 module Methods
-    export ED_HamiltonianMatrix_threaded, LinearMap
+    export SparseHmltMatrix, LinearMap
     export krylov_map_solve, krylov_matrix_solve
 
     using EDCore
@@ -202,11 +202,11 @@ function EDsolve(subspace::HilbertSubspace{bits}, sorted_scat_lists::Vector{<: S
 
         # Construct sparse Hamiltonian matrix from Scatter terms
         if showtime
-            @time H = ED_HamiltonianMatrix_threaded(subspace, sorted_scat_lists...;
+            @time H = SparseHmltMatrix(subspace, sorted_scat_lists...;
                 element_type = element_type, index_type = index_type
             )
         else
-            H = ED_HamiltonianMatrix_threaded(subspace, sorted_scat_lists...;
+            H = SparseHmltMatrix(subspace, sorted_scat_lists...;
                 element_type = element_type, index_type = index_type
             )
         end

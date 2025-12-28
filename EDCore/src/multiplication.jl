@@ -56,6 +56,9 @@ Return the amplitute and the incident many-body basis.
 
 The amplitute is zero if no incident state.
 
+if (amp, mbs_in) == mbs_out * scat && !iszero(amp),  (amp, mbs_out) == scat * mbs_in.
+if (amp_in, mbs_in) == (amp_out, mbs_out) * scat && !iszero(amp_in),  (amp_out, mbs_out) == scat * (amp_in, mbs_in).
+
 Notice: this multiplication assumes `scat` is normal.
 Using abnormal `Scatter` term will generate same result as if its indices are sorted,
 which may cause a sign error.
