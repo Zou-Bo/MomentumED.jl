@@ -160,8 +160,8 @@ function make_mask64(occ_list::Vector{Int64})::UInt64
     return mask
 end
 @inline function make_mask64(occ_list)::UInt64 
-    @assert typeof(occ_list) != Tuple{Int64}
-    @assert typeof(occ_list) != Tuple{Int64, Int64}
+    # @assert typeof(occ_list) != Tuple{Int64}
+    # @assert typeof(occ_list) != Tuple{Int64, Int64}
     make_mask64(collect(occ_list))
 end
 function make_mask64(occ_list::Tuple{Int64})::UInt64

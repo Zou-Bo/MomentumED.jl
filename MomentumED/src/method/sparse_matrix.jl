@@ -8,11 +8,11 @@
 
 # depreciated, only complete_lower always false
 function ED_HamiltonianMatrix_threaded_COO2CSC(
-    subspace::HilbertSubspace, 
+    subspace::HilbertSubspace{bits}, 
     sorted_scat_lists::Vector{<: Scatter}...; 
     isupper::Bool = true, complete_lower::Bool = false,
     element_type::Type{ET} = Float64, index_type::Type{IT} = Int64,
-) where {ET <: AbstractFloat, IT <: Integer}
+) where {bits, ET <: AbstractFloat, IT <: Integer}
 
     @assert element_type ∈ (Float64, Float32) "element_type=$element_type. Use element_type Float64, Float32."
     @assert index_type ∈ (Int128, Int64, Int32, UInt128, UInt64, UInt32) """
@@ -61,11 +61,11 @@ function ED_HamiltonianMatrix_threaded_COO2CSC(
 end
 
 function ED_HamiltonianMatrix_threaded_CSCdirect(
-    subspace::HilbertSubspace, 
+    subspace::HilbertSubspace{bits}, 
     sorted_scat_lists::Vector{<: Scatter}...; 
     isupper::Bool = true, complete_lower::Bool = true,
     element_type::Type{ET} = Float64, index_type::Type{IT} = Int64,
-) where {ET <: AbstractFloat, IT <: Integer}
+) where {bits, ET <: AbstractFloat, IT <: Integer}
 
     @assert element_type ∈ (Float64, Float32) "element_type=$element_type. Use element_type Float64, Float32."
     @assert index_type ∈ (Int128, Int64, Int32, UInt128, UInt64, UInt32) """

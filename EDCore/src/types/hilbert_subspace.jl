@@ -137,7 +137,7 @@ Returns 0 if the state is not found.
 """
 function Base.get(space::HilbertSubspace{bits}, mbs::MBS64{bits})::Int64 where {bits}
     if length(space.dict) != 0
-        return get(space.dict, mbs, 0)
+        return @inbounds get(space.dict, mbs, 0)
     else
         return my_searchsortedfirst(space.list, mbs)
     end
