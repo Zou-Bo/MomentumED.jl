@@ -7,45 +7,131 @@ using Combinatorics
 """
     Scatter{C <: Complex, MBS <: MBS64}
     
-Represents a `Scatter`ing term in the Hamiltonian
+Represents a `Scatter`ing term in an operator:
+V * c†_i1 c†_i2 ... c†_iN c_jN ... c_j2 c_j1 (i-out, j-in)
+The order of creation and annihilated operators are interpreted in the order
+- (1) j1 > j2 > ... > jN (no equality)
+- (2) i1 > i2 > ... > iN (no equality)
     
 Fields:
-- `Amp::C` : Scatter amplitude
+- `Amp::C` : Scattering amplitude
 - `out::MBS` : Output orbital indices (creation operators)
-- `in::MBS` : Input orbital indices (annihilation operators)
+- `in::MBS` : Insident orbital indices (annihilation operators)
+
+Constructor:
+    Scatter(V::Number, out_in::Int64...; bits::Int64, upper_hermitian::Bool = false)
+
+Generate a scattering term with input orbitals. Optimized for N=1,2.
+The sign of amplitute may be flipped, depending on the input orders.
+
+if upper_hermitian is true, the in and out states are interchanged such that:\n
+(3) j1 > i1 or j1 = i1 && j2 > i2 or j1,j2 = i1,i2 && j3 > i3 or ... or j1,...,jN-1 = i1,...,iN-1 && jN >= iN\n
+or equlivently\n
+(3') (j1,...,jN) >= (i1,...,iN)\n
+(3'') field in >= out\n
+
+Example:
+```julia
+Scatter(1.0+0.0im, 5, 3; upper_hermitian=true) == Scatter(-1.0+0.0im, 3, 5)
+```
 """
 struct Scatter{C <: Complex, MBS <: MBS64}
     Amp::C
     out::MBS
     in::MBS
+
+    function Scatter(V::C, out_in::Int64...; 
+        bits::Int64, upper_hermitian::Bool = false
+    ) where{C<:Complex}
+
+        @assert iseven(length(out_in)) "number conservation requires annihilated and created indices number being even"
+        N = length(out_in) ÷ 2
+        # @assert N >= 3
+
+        is = collect(out_in[1:N])
+        js = collect(out_in[2N:-1:N+1])
+
+        i_mask = make_mask64(is)
+        j_mask = make_mask64(js)
+
+        # no repetition
+        if collect_ones(i_mask) < N || collect_ones(j_mask) < N
+            @info "scattering term with repeated orbitals is zero (Pauli exclusion)"
+            return new{C, MBS64{bits}}(zero(V), MBS64{bits}(i_mask), MBS64{bits}(j_mask))
+        end
+
+        # normal ordering
+        i_sort = sortperm(is, rev = true)
+        j_sort = sortperm(js, rev = true)
+        if isodd(parity(i_sort) + parity(j_sort))
+            V = -V
+        end
+
+        if upper_hermitian
+            if j_mask < i_mask
+                i_mask, j_mask = j_mask, i_mask
+                V = conj(V)
+            elseif j_mask == i_mask
+                V = Complex(real(V))
+            end
+        end
+
+        return new{C, MBS64{bits}}(V, MBS64{bits}(i_mask), MBS64{bits}(j_mask))
+    end
+    function Scatter(V::C, i::Int64, j::Int64;
+        bits::Int64, upper_hermitian::Bool = false
+    ) where{C<:Complex}
+
+        # N = 1
+        i_mask = make_mask64((i,))
+        j_mask = make_mask64((j,))
+
+        upper_hermitian || 
+        return new{C, MBS64{bits}}(V, MBS64{bits}(i_mask), MBS64{bits}(j_mask))
+
+        # for upper_hermitian
+        if j_mask < i_mask
+            j_mask, i_mask = i_mask, j_mask
+            V = conj(V)
+        elseif j_mask == i_mask
+            V = Complex(real(V))
+        end
+        return new{C, MBS64{bits}}(V, MBS64{bits}(i_mask), MBS64{bits}(j_mask))
+    end
+    function Scatter(V::ComplexF64, i1::Int64, i2::Int64, j2::Int64, j1::Int64;
+        bits::Int64, upper_hermitian::Bool = false
+    ) where{C<:Complex}
+        
+        # N = 2
+        
+        i_mask = make_mask64((i1, i2))
+        j_mask = make_mask64((j1, j2))
+
+        if j1 == j2 || i1 == i2
+            return new{C, MBS64{bits}}(zero(V), MBS64{bits}(i_mask), MBS64{bits}(j_mask))
+        end
+        
+        # Apply normal ordering rules
+        if i1 < i2
+            V = -V
+        end
+        if j1 < j2
+            V = -V
+        end
+
+        if upper_hermitian
+            if j_mask < i_mask
+                j_mask, i_mask = i_mask, j_mask
+                V = conj(V)
+            elseif j_mask == i_mask
+                V = Complex(real(V))
+            end
+        end
+
+        return new{C, MBS64{bits}}(V, MBS64{bits}(i_mask), MBS64{bits}(j_mask))
+    end
+
 end
-
-"""
-    Scatter(V, out_in::Int64...; bits::Int64)
-
-Construct a Scatter term from amplitude and orbital indices. 
-However, it's recommemded to use `NormalScatter` for construction.
-
-
-The constructor expects an even number of indices, where the first half are output
-indices (creation operators) and the second half are input indices (annihilation
-operators), in reverse order for proper normal ordering.
-
-# Arguments
-- `V::Number`: Scatter amplitude (converted to ComplexF64)
-- `out_in::Int64...`: Variable number of orbital indices (must be even)
-
-"""
-# function Scatter(V::C, out_in::Int64...; bits::Int64) where {C<:Complex}
-#     @assert iseven(length(out_in)) "Number of indices must be even"
-#     N = length(out_in) ÷ 2
-#     outstates = MBS64(bits, out_in[begin:N])
-#     instates = MBS64(bits, out_in[N + 1:end])
-#     return Scatter{C, MBS64{bits}}(V, outstates, instates)
-# end
-# function Scatter(V<:Number, out_in::Int64...; bits::Int64)
-#     return Scatter(Complex(V), out_in...; bits)
-# end
 
 """
     Base.show(io::IO, st::Scatter{C, MBS})
@@ -57,135 +143,25 @@ function Base.show(io::IO, st::Scatter{C, MBS64{bits}}) where {C, bits}
 end
 
 """
-    NormalScatter(V::ComplexF64, out_in::Int64...; upper_hermitian::Bool = false)::Scatter
-
-Generate a scattering term with normal ordering. Optimized for N=1,2.
-
-term: V * c†_i1 c†_i2 ... c†_iN c_jN ... c_j2 c_j1 (j-in, i-out )
-- (1) j1 > j2 > ... > jN (no equality)
-- (2) i1 > i2 > ... > iN (no equality)
-- Hermitian Upper Triangular:\n
-(3) j1 > i1 or j1 = i1 && j2 > i2 or j1,j2 = i1,i2 && j3 > i3 or ... or j1,...,jN-1 = i1,...,iN-1 && jN >= iN\n
-or equlivently in Julia's grammer\n
-(3') (j1,...,jN) >= (i1,...,iN)
-
-Example:
-```julia
-NormalScatter(1.0+0.0im, 5, 3; upper_hermitian=true) == Scatter(-1.0+0.0im, 3, 5)
-```
-"""
-function NormalScatter(V::ComplexF64, out_in::Int64...; upper_hermitian::Bool = false)::Scatter
-    @assert iseven(length(out_in)) "number conservation requires annihilated and created indices number being even"
-    N = length(out_in) ÷ 2
-    @assert N >= 3
-
-    is = collect(out_in[1:N])
-    js = collect(out_in[2N:-1:N+1])
-
-    i_sort = sortperm(is, rev = true)
-    j_sort = sortperm(js, rev = true)
-    i_sorted = is[i_sort]
-    j_sorted = js[j_sort]
-
-    # no repetition
-    # if reduce(|, [diff(i_sorted); diff(j_sorted)] .== 0; init = false)
-    if allunique(j_sorted) && allunique(i_sorted)
-        return Scatter{N}(ComplexF64(0.0), Tuple(i_sorted), Tuple(j_sorted))
-    end
-
-    if isodd(parity(i_sort) + parity(j_sort))
-        V = -V
-    end
-
-    j_tuple = Tuple(j_sorted)
-    i_tuple = Tuple(i_sorted)
-    if upper_hermitian
-        if j_tuple < i_tuple
-            i_tuple, j_tuple = j_tuple, i_tuple
-            V = conj(V)
-        elseif j_tuple == i_sort
-            V = real(V) + 0.0im
-        end
-    end
-
-    return Scatter{N}(V, i_tuple, j_tuple)
-end
-function NormalScatter(V::ComplexF64, i::Int64, j::Int64; upper_hermitian::Bool = false)::Scatter{1}
-    # N = 1
-    
-    upper_hermitian || return Scatter{1}(V, (i,), (j,))
-
-    # Apply normal ordering rules only when upper_hermitian is required
-
-    # j >= i
-    if j < i
-        j, i = i, j
-        V = conj(V)
-    elseif j == i
-        V = real(V) + 0.0im
-    end
-
-    return Scatter{1}(V, (i,), (j,))
-end
-function NormalScatter(V::ComplexF64, i1::Int64, i2::Int64, j2::Int64, j1::Int64; upper_hermitian::Bool = false)::Scatter{2}
-    # N = 2
-    
-    # Apply normal ordering rules
-    
-    # i1 > i2
-    if i1 < i2
-        i1, i2 = i2, i1
-        V = -V
-    end
-    
-    # j1 > j2
-    if j1 < j2
-        j1, j2 = j2, j1
-        V = -V
-    end
-
-    # Skip if indices are invalid
-    if j1 == j2 || i1 == i2
-        return Scatter(0.0, i1, i2, j2, j1)
-    end
-    
-    # j1 > i1 or j1 = i1 && j2 > i2
-    if upper_hermitian
-        if (j1, j2) < (i1, i2) 
-            j1, i1 = i1, j1
-            j2, i2 = i2, j2
-            V = conj(V)
-        elseif (j1, j2) == (i1, i2)
-            V = real(V) + 0.0im
-        end
-    end
-
-    return Scatter{2}(V, (i1, i2), (j1, j2))
-end
-"""
 docstring needed
 """
-isnormal(x::Scatter)::Bool = issorted(x.in; rev=true) && issorted(x.out; rev=true)
-"""
-docstring needed
-"""
-isnormalupper(x::Scatter)::Bool = isnormal(x) && (x.in > x.out || x.in == x.out && iszero(imag(x.Amp)))
+isupper(x::Scatter)::Bool = x.in > x.out || x.in == x.out && iszero(imag(x.Amp))
 
 """
-    get_body(::Scatter{N}) = N
+    get_body(::Scatter)
 
 Return number of body.
 """
-get_body(::Scatter{N}) where {N} = N
+get_body(s::Scatter) = (count_ones(s.out), count_ones(s.in))
 
 import Base: adjoint
 """
-    adjoint(s::Scatter{N})::Scatter{N}
+    adjoint(s::Scatter{C, MBS})::Scatter{C, MBS}
 
 Create a reverse scattering term: exchange incident and output orbitals and conjugate amplitude.
 """
-function adjoint(s::Scatter{N})::Scatter{N} where {N}
-    Scatter{N}(conj(s.Amp), s.in, s.out)
+function adjoint(s::Scatter{C, MBS})::Scatter{C, MBS} where {C,MBS}
+    Scatter{C, MBS}(conj(s.Amp), s.in, s.out)
 end
 """
     isdiagonal(s::Scatter)::Bool
@@ -198,47 +174,48 @@ isdiagonal(s::Scatter)::Bool = s.in == s.out
 
 import Base: isless, ==, +, *
 """
-    isless(s1::Scatter{N1}, s2::Scatter{N2})::Bool
+    isless(s1::Scatter, s2::Scatter)::Bool
 
-Irrelevant to  amplitute, compare scattering types.
+Irrelevant to amplitute, compare scattering types.
 
-N1 < N2; if equal, s1.in < s2.in; if equal, s1.out < s2.out.
+s1.in < s2.in; if equal, s1.out < s2.out.
 """
-function isless(s1::Scatter{N1}, s2::Scatter{N2}) where {N1, N2} 
-    N1 < N2 || N1 == N2 && ( s1.in < s2.in || s1.in == s2.in && s1.out < s2.out )
+function isless(s1::Scatter{C, MBS}, s2::Scatter{C, MBS}) where {C, MBS} 
+    s1.in < s2.in || s1.in == s2.in && s1.out < s2.out
 end
 """
-    ==(s1::Scatter{N1}, s2::Scatter{N2})::Bool
+    ==(s1::Scatter1, s2::Scatter2)::Bool
 
-Irrelevant to  amplitute, check if the scattering types are the same.
+Irrelevant to amplitute, check if the scattering types are the same.
 
-N1 == N2, and s1.in == s2.in, and s1.out == s2.out.
+Scatter1 == Scatter2, and s1.in == s2.in, and s1.out == s2.out.
 """
-function ==(x::Scatter{N1}, y::Scatter{N2}) where {N1, N2}
-    N1 == N2 && x.in == y.in && x.out == y.out
+function ==(x::S, y::S)::Bool where{S <: Scatter}
+    x.in == y.in && x.out == y.out
+end
+function ==(x::S1, y::S2)::Bool where {S1 <: Scatter, S2 <: Scatter}
+    false
 end
 """
-    s1::Scatter{N} + s2::Scatter{N} -> sum::Scatter{N}
+    s1::Scatter{C, MBS} + s2::Scatter{C, MBS} -> sum::Scatter{N}
 
-Combine the amplitutes of the two terms of the same type. 
-
-(N1 == N2) and s1.in == s2.in and s1.out == s2.out.
+Combine the amplitutes of the two terms of the same type (s1==s2). 
 
 Return a scattering term with summing amplitute.
 """
-function +(x::Scatter{N}, y::Scatter{N})::Scatter{N} where {N}
+function +(x::Scatter{C, MBS}, y::Scatter{C, MBS})::Scatter{C, MBS} where {C, MBS}
     @assert x == y "Can only add identical Scatter terms"
-    return Scatter{N}(x.Amp + y.Amp, x.out, x.in)
+    return Scatter{C, MBS}(x.Amp + y.Amp, x.out, x.in)
 end
 """
-    a::Number * s::Scatter{N} -> s'::Scatter{N}
+    a::Number * s::Scatter{C, MBS} -> s'::Scatter{C, MBS}
 
 Return a scattering term with amplitute multiplied a number.
 
-The number should be able to converted as ComplexF64.
+The number `a` will be converted as C.
 """
-function *(a::T, scat::Scatter{N})::Scatter{N} where {N, T <: Number}
-    Scatter{N}(ComplexF64(a)*scat.Amp, scat.out, scat.in)
+function *(a::T, scat::Scatter{C, MBS})::Scatter{C, MBS} where {C, MBS, T <: Number}
+    Scatter{C, MBS}(C(a)*scat.Amp, scat.out, scat.in)
 end
 
 
@@ -247,108 +224,32 @@ end
 """
     sort_merge_scatlist(lists; keywords)
 
-Sort and merge a list (lists) of normalized Scatter terms.
+Sort and merge a list of Scatter terms.
 
 # Input
-- (1) lists::Vector{Scatter{N}}:
+- `lists`::Vector{Scatter{C, MBS}}:
 Return a sorted and merged list: Vector{Scatter{N}}
-- (2) lists::Vector{Scatter}:
-Grouping scattering terms by their N, then sorting and merging each group. 
-Return a list of sorted and merged lists: Vector{Vector{<: Scatter}}, each inner list has a specified N.
-- (3) lists::Vector{Vector{<:Scatter}}:
-Similar to (2).
-Return a list of sorted and merged lists: Vector{Vector{<: Scatter}}, each inner list has a specified N.
 
 # Keywords
-- `check_normal::Bool` = true: checking all the scatting terms are in nomal order
-- `check_normalupper::Bool` = true: checking all the scatting terms are in nomal order and is in the upper triangular position.
+- `check_upper::Bool` = true: checking all the scatting terms are in the upper triangular of a Hermitian operator.
 """
-function sort_merge_scatlist(normal_sct_list::Vector{<: Scatter};
-    check_normal::Bool = true, check_normalupper::Bool = true
-    )::Vector{<:Scatter}
+function sort_merge_scatlist(sct_list::Vector{Scatter{C, MBS}};
+    check_upper::Bool = true)::Vector{Scatter{C, MBS}} where {C, MBS}
+    
+    if isempty(sct_list) return similar(sct_list) end
 
-    if check_normalupper
-        @assert all(isnormalupper, normal_sct_list) "All Scatter terms must be in normal order and in the upper triangular."
-    elseif check_normal
-        @assert all(isnormal, normal_sct_list) "All Scatter terms must be in normal order."
+    if check_upper
+        @assert all(isupper, sct_list) "All Scatter terms must be in the upper triangular."
     end
 
-    sorted_list = sort(normal_sct_list)
-    merged_list = eltype(sorted_list)[]
+    sorted_list = sort(sct_list)
+    merged_list = [0.0 * sorted_list[1]; ] # starting point
     for sct in sorted_list
-        if !isempty(merged_list) && sct == merged_list[end]
+        if sct == merged_list[end]
             merged_list[end] += sct
         else
             push!(merged_list, sct)
         end
     end
     return merged_list
-end
-function sort_merge_scatlist(normal_sct_list::Vector{Scatter};
-    check_normal::Bool = true, check_normalupper::Bool = true
-    )::Vector{Vector{<:Scatter}}
-
-    if check_normalupper
-        @assert all(isnormalupper, normal_sct_list) "All Scatter terms must be in normal order and in the upper triangular."
-    elseif check_normal
-        @assert all(isnormal, normal_sct_list) "All Scatter terms must be in normal order."
-    end
-
-    body_count = Int64[]
-    merged_list = Vector{<:Scatter}[]
-    for s in normal_sct_list
-        N = get_body(s)
-        i = findfirst(body_count .== N)
-        if isnothing(i)
-            push!(body_count, N)
-            push!(merged_list, Scatter{N}[])
-            i = length(body_count)
-        end
-        push!(merged_list[i], s)
-    end
-    for i in eachindex(merged_list)
-        merged_list[i] = sort_merge_scatlist(merged_list[i]; 
-            check_normal = false, check_normalupper = false)
-    end
-    return merged_list
-end
-function sort_merge_scatlist(normal_sct_lists::Vector{Vector{<:Scatter}};
-    check_normal::Bool = true, check_normalupper::Bool = true
-    )::Vector{Vector{<:Scatter}}
-
-    body_count = Int64[]
-    merged_lists = Vector{<:Scatter}[]
-    for scat_list in normal_sct_lists
-
-        if length(scat_list) == 0
-            continue
-        end
-
-        if eltype(scat_list) == Scatter
-            div_lists = sort_merge_scatlist(scat_list; check_normal = false, check_normalupper = false)
-            for div_list in div_lists
-                N = get_body(div_list[1])
-                i = findfirst(body_count .== N)
-                if isnothing(i)
-                    push!(body_count, N)
-                    push!(merged_lists, Scatter{N}[])
-                    i = length(body_count)
-                end
-                append!(merged_lists[i], div_list)
-            end
-        else
-            N = get_body(scat_list[1])
-            i = findfirst(body_count .== N)
-            if isnothing(i)
-                push!(body_count, N)
-                push!(merged_lists, Scatter{N}[])
-                i = length(body_count)
-            end
-            append!(merged_lists[i], scat_list)
-        end
-    end
-    for i in eachindex(merged_lists)
-        merged_lists[i] = sort_merge_scatlist(merged_lists[i]; check_normal, check_normalupper)
-    end
-    return merged_lists
 end
