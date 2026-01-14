@@ -77,22 +77,19 @@ LinearAlgebra.dot(::MBS64Vector{bits, F}, ::MBS64Vector{bits, F}) where {bits, F
 ### Types
 ```@docs
 Scatter
-NormalScatter
-Scatter(V, outin::Int64...)
-Base.show(::IO, ::Scatter{N}) where {N}
+Base.show(::IO, ::Scatter{C, MBS64{bits}}) where {C, bits}
 ```
 
 ### Functions
 ```@docs
 get_body
-isnormal
-isnormalupper
+isupper(::Scatter)
 isdiagonal
-Base.adjoint(::Scatter{N}) where {N}
-Base.isless(::Scatter{N1}, ::Scatter{N2}) where {N1, N2}
-Base.:(==)(::Scatter{N1}, ::Scatter{N2}) where {N1, N2}
-Base.:+(::Scatter{N}, ::Scatter{N}) where {N}
-Base.:*(::Number, ::Scatter{N}) where {N}
+Base.adjoint(::Scatter{C, MBS}) where {C,MBS}
+Base.isless(::Scatter{C, MBS}, ::Scatter{C, MBS}) where {C, MBS}
+Base.:(==)(::S, ::S) where {S <: Scatter}
+Base.:+(::Scatter{C, MBS}, ::Scatter{C, MBS}) where {C, MBS}
+Base.:*(::T, ::Scatter{C, MBS}) where {C, MBS, T <: Number}
 sort_merge_scatlist
 ```
 
@@ -106,7 +103,7 @@ Base.show(::IO, ::MBOperator)
 
 ### Functions
 ```@docs
-isupper
+isupper(::MBOperator)
 Base.adjoint(::MBOperator)
 LinearAlgebra.adjoint!(::MBOperator)
 ```
@@ -115,9 +112,9 @@ LinearAlgebra.adjoint!(::MBOperator)
 
 ### Functions
 ```@docs
-Base.:*(::Scatter, ::MBS64)
-Base.:*(::MBS64, ::Scatter)
-Base.:*(::MBOperator, ::MBS64Vector)
+Base.:*(::Scatter{C, MBS64{bits}}, ::MBS64{bits}) where {C, bits} 
+Base.:*(::MBS64{bits}, ::Scatter{C, MBS64{bits}}) where {C, bits} 
+Base.:*(::MBOperator{Complex{eltype}, MBS64{bits}}, ::MBS64Vector{bits, eltype}) where {bits, eltype <: AbstractFloat}
 ED_bracket
 ED_bracket_threaded
 ``` 

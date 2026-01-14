@@ -155,7 +155,7 @@ isupper(x::Scatter)::Bool = x.in > x.out || x.in == x.out && iszero(imag(x.Amp))
 
 Return number of body.
 """
-get_body(s::Scatter) = (count_ones(s.out), count_ones(s.in))
+get_body(s::Scatter) = (count_ones(s.out.n), count_ones(s.in.n))
 
 import Base: adjoint
 """

@@ -13,6 +13,9 @@ using EDCore
     @testset "manybodystate_vector.jl" begin
         include("test_manybodystate_vector.jl")
     end
+    @testset "colex_mbslist.jl" begin
+        include("test_colex_mbslist.jl")
+    end
     @testset "scattering.jl" begin
         include("test_scattering.jl")
     end

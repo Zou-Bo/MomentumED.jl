@@ -28,8 +28,23 @@ struct MBS64Vector{bits, F <: AbstractFloat}
     end
 end
 
-import Base: show, length, size, similar
+import Base: show, length, size, similar, getindex
 import LinearAlgebra: dot
+# """
+#     Base.getindex(mbs_vec::MBS64Vector{bits, F}, mbs::MBS64{bits}) where {bits, F <: AbstractFloat}
+
+# Retrieves the amplitude for a given many-body state `mbs` from the `MBS64Vector`.
+# Returns `zero(Complex{F})` if the state is not found in the Hilbert subspace.
+# """
+# function Base.getindex(mbs_vec::MBS64Vector{bits, F}, mbs::MBS64{bits}) where {bits, F <: AbstractFloat}
+#     idx = get(mbs_vec.space, mbs)
+#     if idx == 0
+#         return zero(Complex{F})
+#     else
+#         return mbs_vec.vec[idx]
+#     end
+# end
+
 """
     Base.show(io::IO, mime::MIME"text/plain", mbs_vec::MBS64Vector{bits, F}) where {bits, F <: AbstractFloat}
 

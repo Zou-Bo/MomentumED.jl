@@ -6,8 +6,7 @@ export isoccupied, isempty, occupy!, empty!, flip!, scat_occ_number
 export idtype, make_dict!, delete_dict!, get_from_list, get_from_dict
 
 export Scatter, MBOperator
-export NormalScatter, get_body, isnormal, isnormalupper, isdiagonal
-export sort_merge_scatlist, isupper
+export get_body, isupper, isdiagonal, sort_merge_scatlist
 
 export ED_bracket, ED_bracket_threaded
 export ColexMBS64, ColexMBS64Mask
