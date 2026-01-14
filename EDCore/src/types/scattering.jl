@@ -1,5 +1,5 @@
-# to-do list:
-# Scattering{C <: Complex, MBS <: MBS64}
+# todo list:
+# constructor for number nonconserved scatter
 
 using LinearAlgebra
 using Combinatorics
@@ -22,7 +22,8 @@ Constructor:
     Scatter(V::Number, out_in::Int64...; bits::Int64, upper_hermitian::Bool = false)
 
 Generate a scattering term with input orbitals. Optimized for N=1,2.
-The sign of amplitute may be flipped, depending on the input orders.
+Input orders are the operator order: c†_i1 c†_i2 ... c†_iN c_jN ... c_j2 c_j1 (i-out, j-in)
+The sign of amplitute may be flipped when transformed to the sorted order.
 
 if upper_hermitian is true, the in and out states are interchanged such that:\n
 (3) j1 > i1 or j1 = i1 && j2 > i2 or j1,j2 = i1,i2 && j3 > i3 or ... or j1,...,jN-1 = i1,...,iN-1 && jN >= iN\n
@@ -32,105 +33,107 @@ or equlivently\n
 
 Example:
 ```julia
-Scatter(1.0+0.0im, 5, 3; upper_hermitian=true) == Scatter(-1.0+0.0im, 3, 5)
+Scatter(1.0+0.5im, 5, 3; bits=10, upper_hermitian=true) == Scatter(1.0-0.5im, 3, 5; bits=10)
 ```
 """
 struct Scatter{C <: Complex, MBS <: MBS64}
     Amp::C
     out::MBS
     in::MBS
+end
+function Scatter(V::C, out_in::Int64...; 
+    bits::Int64, upper_hermitian::Bool = false
+) where{C<:Complex}
 
-    function Scatter(V::C, out_in::Int64...; 
-        bits::Int64, upper_hermitian::Bool = false
-    ) where{C<:Complex}
+    @assert iseven(length(out_in)) "number conservation requires annihilated and created indices number being even"
+    N = length(out_in) ÷ 2
+    # @assert N >= 3
 
-        @assert iseven(length(out_in)) "number conservation requires annihilated and created indices number being even"
-        N = length(out_in) ÷ 2
-        # @assert N >= 3
+    is = collect(out_in[1:N])
+    js = collect(out_in[2N:-1:N+1])
 
-        is = collect(out_in[1:N])
-        js = collect(out_in[2N:-1:N+1])
+    i_mask = make_mask64(is)
+    j_mask = make_mask64(js)
 
-        i_mask = make_mask64(is)
-        j_mask = make_mask64(js)
-
-        # no repetition
-        if collect_ones(i_mask) < N || collect_ones(j_mask) < N
-            @info "scattering term with repeated orbitals is zero (Pauli exclusion)"
-            return new{C, MBS64{bits}}(zero(V), MBS64{bits}(i_mask), MBS64{bits}(j_mask))
-        end
-
-        # normal ordering
-        i_sort = sortperm(is, rev = true)
-        j_sort = sortperm(js, rev = true)
-        if isodd(parity(i_sort) + parity(j_sort))
-            V = -V
-        end
-
-        if upper_hermitian
-            if j_mask < i_mask
-                i_mask, j_mask = j_mask, i_mask
-                V = conj(V)
-            elseif j_mask == i_mask
-                V = Complex(real(V))
-            end
-        end
-
-        return new{C, MBS64{bits}}(V, MBS64{bits}(i_mask), MBS64{bits}(j_mask))
+    # no repetition
+    if count_ones(i_mask) < N || count_ones(j_mask) < N
+        @info "scattering term with repeated orbitals is zero (Pauli exclusion)"
+        return Scatter{C, MBS64{bits}}(zero(V), MBS64{bits}(i_mask), MBS64{bits}(j_mask))
     end
-    function Scatter(V::C, i::Int64, j::Int64;
-        bits::Int64, upper_hermitian::Bool = false
-    ) where{C<:Complex}
 
-        # N = 1
-        i_mask = make_mask64((i,))
-        j_mask = make_mask64((j,))
+    # normal ordering
+    i_sort = sortperm(is, rev = true)
+    j_sort = sortperm(js, rev = true)
+    if isodd(parity(i_sort) + parity(j_sort))
+        V = -V
+    end
 
-        upper_hermitian || 
-        return new{C, MBS64{bits}}(V, MBS64{bits}(i_mask), MBS64{bits}(j_mask))
+    if upper_hermitian
+        if j_mask < i_mask
+            i_mask, j_mask = j_mask, i_mask
+            V = conj(V)
+        elseif j_mask == i_mask
+            V = Complex(real(V))
+        end
+    end
 
-        # for upper_hermitian
+    return Scatter{C, MBS64{bits}}(V, MBS64{bits}(i_mask), MBS64{bits}(j_mask))
+end
+function Scatter(V::C, i::Int64, j::Int64;
+    bits::Int64, upper_hermitian::Bool = false
+) where{C<:Complex}
+
+    # N = 1
+    i_mask = make_mask64((i,))
+    j_mask = make_mask64((j,))
+
+    upper_hermitian || 
+    return Scatter{C, MBS64{bits}}(V, MBS64{bits}(i_mask), MBS64{bits}(j_mask))
+
+    # for upper_hermitian
+    if j_mask < i_mask
+        j_mask, i_mask = i_mask, j_mask
+        V = conj(V)
+    elseif j_mask == i_mask
+        V = Complex(real(V))
+    end
+    return Scatter{C, MBS64{bits}}(V, MBS64{bits}(i_mask), MBS64{bits}(j_mask))
+end
+function Scatter(V::C, i1::Int64, i2::Int64, j2::Int64, j1::Int64;
+    bits::Int64, upper_hermitian::Bool = false
+) where{C<:Complex}
+    
+    # N = 2
+    
+    i_mask = make_mask64((i1, i2))
+    j_mask = make_mask64((j1, j2))
+
+    if j1 == j2 || i1 == i2
+        @info "scattering term with repeated orbitals is zero (Pauli exclusion)"
+        return Scatter{C, MBS64{bits}}(zero(V), MBS64{bits}(i_mask), MBS64{bits}(j_mask))
+    end
+    
+    # Apply normal ordering rules
+    if i1 < i2
+        V = -V
+    end
+    if j1 < j2
+        V = -V
+    end
+
+    if upper_hermitian
         if j_mask < i_mask
             j_mask, i_mask = i_mask, j_mask
             V = conj(V)
         elseif j_mask == i_mask
             V = Complex(real(V))
         end
-        return new{C, MBS64{bits}}(V, MBS64{bits}(i_mask), MBS64{bits}(j_mask))
-    end
-    function Scatter(V::ComplexF64, i1::Int64, i2::Int64, j2::Int64, j1::Int64;
-        bits::Int64, upper_hermitian::Bool = false
-    ) where{C<:Complex}
-        
-        # N = 2
-        
-        i_mask = make_mask64((i1, i2))
-        j_mask = make_mask64((j1, j2))
-
-        if j1 == j2 || i1 == i2
-            return new{C, MBS64{bits}}(zero(V), MBS64{bits}(i_mask), MBS64{bits}(j_mask))
-        end
-        
-        # Apply normal ordering rules
-        if i1 < i2
-            V = -V
-        end
-        if j1 < j2
-            V = -V
-        end
-
-        if upper_hermitian
-            if j_mask < i_mask
-                j_mask, i_mask = i_mask, j_mask
-                V = conj(V)
-            elseif j_mask == i_mask
-                V = Complex(real(V))
-            end
-        end
-
-        return new{C, MBS64{bits}}(V, MBS64{bits}(i_mask), MBS64{bits}(j_mask))
     end
 
+    return Scatter{C, MBS64{bits}}(V, MBS64{bits}(i_mask), MBS64{bits}(j_mask))
+end
+function Scatter(V::Real, out_in::Int64...; bits::Int64, upper_hermitian::Bool = false)
+    return Scatter(Complex(V), out_in...; bits, upper_hermitian)
 end
 
 """
@@ -139,7 +142,7 @@ end
 Display a scattering term in a readable format.
 """
 function Base.show(io::IO, st::Scatter{C, MBS64{bits}}) where {C, bits}
-    print(io, "Scattering term: c†_out ", reverse(occ_list(st.out)), " c_in ", occ_list(st.in), ", Amp = ", st.Amp)
+    print(io, typeof(st), ": c†_out ", reverse(occ_list(st.out)), " c_in ", occ_list(st.in), ", Amp = ", st.Amp)
 end
 
 """
@@ -252,4 +255,9 @@ function sort_merge_scatlist(sct_list::Vector{Scatter{C, MBS}};
         end
     end
     return merged_list
+end
+function sort_merge_scatlist(sct_list::Vector{Scatter{C, MBS}}...;
+    check_upper::Bool = true)::Vector{Scatter{C, MBS}} where {C, MBS}
+    
+    return sort_merge_scatlist(vcat(sct_list...); check_upper)
 end

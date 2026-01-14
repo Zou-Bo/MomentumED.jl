@@ -1,3 +1,7 @@
+# todo list
+# function to transform momentum
+# update docstring due to new Scatter struct
+
 """
     ED_sortedScatterList_onebody(para::EDPara) -> Vector{Scatter{1}}
 
@@ -24,8 +28,9 @@ para = EDPara(k_list=k_list, Gk=(3, 5), V_int=V_int)
 Scatter1 = ED_sortedScatterList_onebody(para)
 ```
 """
-function ED_sortedScatterList_onebody(para::EDPara)::Vector{Scatter{1}}
-    sct_list1 = Vector{Scatter{1}}()
+function ED_sortedScatterList_onebody(para::EDPara; MBS_type::Type{<:MBS64} = MBS64{para.Nc*para.Nk}
+    )::Vector{Scatter{ComplexF64, MBS_type}}
+    sct_list1 = Vector{Scatter{ComplexF64, MBS_type}}()
     Nk = para.Nk
     Nch = para.Nc_hopping
     Ncc = para.Nc_conserve
@@ -39,7 +44,9 @@ function ED_sortedScatterList_onebody(para::EDPara)::Vector{Scatter{1}}
             i_in = k + Nk * (ch2 - 1) + Nk * Nch * (cc - 1)  # input orbital
 
             # Create Scatter term with normal ordering
-            i_in >= i_ot && push!(sct_list1, NormalScatter(V, i_ot, i_in; upper_hermitian = true))
+            i_in >= i_ot && push!(sct_list1, Scatter(V, i_ot, i_in; 
+                bits = para.Nc*para.Nk, upper_hermitian = true
+            ))
         end
     end
     
@@ -127,8 +134,9 @@ This internal function uses an interaction function `V_int` that accepts momentu
 - Calculates Scatter amplitudes using `para.V_int` with momentum shifts.
 - Includes both direct (`V(f1,f2,i2,i1)`) and exchange (`V(f1,f2,i1,i2)`) contributions.
 """
-function scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para::EDPara;
-    shifts::Matrix{T})::Vector{Scatter{2}} where {T <: Real}
+function scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, 
+    para::EDPara; MBS_type::Type{<:MBS64} = MBS64{para.Nc*para.Nk},
+    shifts::Matrix{T})::Vector{Scatter{ComplexF64, MBS_type}} where {T <: Real}
     
     # @assert size(shifts) == (2, para.Nc_conserve)
 
@@ -163,7 +171,7 @@ function scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para
 
 
 
-    Scatter_list = Vector{Scatter{2}}()
+    Scatter_list = Vector{Scatter{ComplexF64, MBS_type}}()
     # Iterate over all input and output pairs
     for (ki1, ki2) in pair_group, (kf1, kf2) in pair_group
         PRINT_TWOBODY_SCATTER_PAIRS && println()
@@ -222,7 +230,9 @@ function scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para
                 )
 
                 amp = (amp_direct - amp_exchange) / sys_size
-                iszero(amp) || push!(Scatter_list, NormalScatter(amp, f1, f2, i2, i1; upper_hermitian = true))
+                iszero(amp) || push!(Scatter_list, Scatter(amp, f1, f2, i2, i1; 
+                    upper_hermitian = true, bits = para.Nc * para.Nk
+                ))
                 PRINT_TWOBODY_SCATTER_PAIRS && println()
             end
         
@@ -251,15 +261,16 @@ This internal function uses an interaction function `V_int` that accepts momentu
 - Iterates over all input/output momentum pair combinations within the group.
 - Applies normal ordering and calculates direct and exchange amplitudes.
 """
-function scat_pair_group_index(pair_group::Vector{Tuple{Int64,Int64}}, para::EDPara;
-    )::Vector{Scatter{2}}
+function scat_pair_group_index(pair_group::Vector{Tuple{Int64,Int64}}, 
+    para::EDPara; MBS_type::Type{<:MBS64} = MBS64{para.Nc*para.Nk}
+    )::Vector{Scatter{ComplexF64, MBS_type}}
     
     Nc = para.Nc
     Nk = para.Nk
     Gk1, Gk2 = para.Gk
     sys_size = (Gk1 != 0 && Gk2 != 0) ? Nk : 1
 
-    Scatter_list = Vector{Scatter{2}}()
+    Scatter_list = Vector{Scatter{ComplexF64, MBS_type}}()
     # Iterate over all input and output pairs
     for (ki1, ki2) in pair_group, (kf1, kf2) in pair_group
         PRINT_TWOBODY_SCATTER_PAIRS && println()
@@ -305,7 +316,9 @@ function scat_pair_group_index(pair_group::Vector{Tuple{Int64,Int64}}, para::EDP
                 )
 
                 amp = (amp_direct - amp_exchange) / sys_size
-                iszero(amp) || push!(Scatter_list, NormalScatter(amp, f1, f2, i2, i1; upper_hermitian = true))
+                iszero(amp) || push!(Scatter_list, Scatter(amp, f1, f2, i2, i1; 
+                    upper_hermitian = true, bits = para.Nc*para.Nk
+                ))
                 PRINT_TWOBODY_SCATTER_PAIRS && println()
             end
         
@@ -349,13 +362,13 @@ Scatter2 = ED_sortedScatterList_twobody(para)
 Scatter2_shifted = ED_sortedScatterList_twobody(para; kshift=(0.1, 0.1))
 ```
 """
-function ED_sortedScatterList_twobody(para::EDPara; 
+function ED_sortedScatterList_twobody(para::EDPara; MBS_type::Type{<:MBS64} = MBS64{para.Nc*para.Nk},
     momentum_transformation::Union{Nothing, Function} = nothing,
-    kshift = nothing)::Vector{Scatter{2}}
+    kshift = nothing)::Vector{Scatter{ComplexF64, MBS_type}}
 
     momentum_groups = group_momentum_pairs(para; momentum_transformation)
     
-    sct_list2 = Vector{Scatter{2}}()
+    sct_list2 = Vector{Scatter{ComplexF64, MBS_type}}()
     if para.momentum_coordinate
 
         if isnothing(kshift)

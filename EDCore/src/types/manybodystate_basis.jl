@@ -403,7 +403,18 @@ function scat_occ_number(mbs::MBS64{bits}, i_list::Vector{Int64})::Int64 where {
         end
     end
     return count_ones(mbs.n & mask)
-
+end
+function scat_occ_number(mbs::MBS64{bits}, i_mask::UInt64)::Int64 where {bits}
+    mask = zero(UInt64)
+    while i_mask > 0
+        tz1 = trailing_zeros(i_mask)
+        i_mask ⊻= UInt64(1) << tz1 # clear the bit
+        tz2 = trailing_zeros(i_mask)
+        i_mask ⊻= UInt64(1) << tz2 # clear the bit
+        mask += UInt64(1) << tz2
+        mask -= UInt64(1) << (tz1 + 1)
+    end
+    return count_ones(mbs.n & mask)
 end
 @inline function scat_occ_number(mbs::MBS64{bits}, i_list::Tuple{Vararg{Int64}})::Int64 where {bits}
     @assert typeof(i_list) != Tuple{Int64}
