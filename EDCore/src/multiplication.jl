@@ -10,40 +10,30 @@ Applying a scatter operator on a many-body basis. Return the amplitute and the o
 
 The amplitute is zero if no output state.
 
-Notice: this multiplication assumes `scat` is normal.
-Using abnormal `Scatter` term will generate same result as if its indices are sorted,
-which may cause a sign error.
-It is recommended to always use `NormalScatter` to create `Scatter` terms.
 """
-function *(scat::Scatter{N}, mbs_in::MBS64{bits})::Tuple{ComplexF64, MBS64{bits}} where {N, bits} 
-    
-    @boundscheck @assert scat.in[1] <= bits && scat.out[1] <= bits "The scat operator change mbs bits beyond physical limit."
-
-    if isoccupied(mbs_in, scat.in)
+function *(scat::Scatter{C, MBS64{bits}}, mbs_in::MBS64{bits})::Tuple{C, MBS64{bits}} where {C, bits} 
+    if isoccupied(mbs_in, scat.in.n)
         if scat.in == scat.out
             return scat.Amp, mbs_in
         else
-            mbs_mid = empty!(mbs_in, scat.in; check = false)
-            if isempty(mbs_mid, scat.out)
-                mbs_out = occupy!(mbs_mid, scat.out; check = false)
-                amp = scat.Amp
-                if isodd(scat_occ_number(mbs_mid, scat.in) + scat_occ_number(mbs_mid, scat.out))
-                    amp = -amp
+            mbs_mid = empty!(mbs_in, scat.in.n; check = false)
+            if isempty(mbs_mid, scat.out.n)
+                mbs_out = occupy!(mbs_mid, scat.out.n; check = false)
+                if isodd(scat_occ_number(mbs_mid, scat.in.n) + scat_occ_number(mbs_mid, scat.out.n))
+                    return -scat.Amp, mbs_out
+                else
+                    return scat.Amp, mbs_out
                 end
-                return amp, mbs_out
             end
         end
     end
-    return ComplexF64(0.0), mbs_in
+    return zero(C), mbs_in
 end
-function *(scat::Scatter{N}, tuple_mbs_in::Tuple{ComplexF64, MBS64{bits}})::Tuple{ComplexF64, MBS64{bits}} where {N, bits}
-    
-    @boundscheck @assert scat.in[1] <= bits && scat.out[1] <= bits "The scat operator change mbs bits beyond physical limit."
+function *(scat::Scatter{C, MBS64{bits}}, tuple_mbs_in::Tuple{C, MBS64{bits}})::Tuple{C, MBS64{bits}} where {C, bits}
+    iszero(tuple_mbs_in[1]) && return tuple_mbs_in
 
     amp_in, mbs_in = tuple_mbs_in
-    iszero(amp_in) && return tuple_mbs_in
-
-    @inbounds amp_out, mbs_out = scat * mbs_in
+    amp_out, mbs_out = scat * mbs_in
     return amp_in * amp_out, mbs_out
 end
 
@@ -59,40 +49,30 @@ The amplitute is zero if no incident state.
 if (amp, mbs_in) == mbs_out * scat && !iszero(amp),  (amp, mbs_out) == scat * mbs_in.
 if (amp_in, mbs_in) == (amp_out, mbs_out) * scat && !iszero(amp_in),  (amp_out, mbs_out) == scat * (amp_in, mbs_in).
 
-Notice: this multiplication assumes `scat` is normal.
-Using abnormal `Scatter` term will generate same result as if its indices are sorted,
-which may cause a sign error.
-It is recommended to always use `NormalScatter` to create `Scatter` terms.
 """
-function *(mbs_out::MBS64{bits}, scat::Scatter{N})::Tuple{ComplexF64, MBS64{bits}} where {N, bits} 
-    
-    @boundscheck @assert scat.in[1] <= bits && scat.out[1] <= bits "The scat operator change mbs bits beyond physical limit."
-
-    if isoccupied(mbs_out, scat.out)
+function *(mbs_out::MBS64{bits}, scat::Scatter{C, MBS64{bits}})::Tuple{C, MBS64{bits}} where {C, bits} 
+    if isoccupied(mbs_out, scat.out.n)
         if scat.in == scat.out
             return scat.Amp, mbs_out
         else
-            mbs_mid = empty!(mbs_out, scat.out; check = false)
-            if isempty(mbs_mid, scat.in)
-                mbs_in = occupy!(mbs_mid, scat.in; check = false)
-                amp = scat.Amp
-                if isodd(scat_occ_number(mbs_mid, scat.in) + scat_occ_number(mbs_mid, scat.out))
-                    amp = -amp
+            mbs_mid = empty!(mbs_out, scat.out.n; check = false)
+            if isempty(mbs_mid, scat.in.n)
+                mbs_in = occupy!(mbs_mid, scat.in.n; check = false)
+                if isodd(scat_occ_number(mbs_mid, scat.in.n) + scat_occ_number(mbs_mid, scat.out.n))
+                    return -scat.Amp, mbs_in
+                else
+                    return scat.Amp, mbs_in
                 end
-                return amp, mbs_in
             end
         end
     end
-    return ComplexF64(0.0), mbs_out
+    return zero(C), mbs_out
 end
-function *(tuple_mbs_out::Tuple{ComplexF64, MBS64{bits}}, scat::Scatter{N})::Tuple{ComplexF64, MBS64{bits}} where {N, bits}
-    
-    @boundscheck @assert scat.in[1] <= bits && scat.out[1] <= bits "The scat operator change mbs bits beyond physical limit."
-
-    amp_out, mbs_out = tuple_mbs_out
+function *(tuple_mbs_out::Tuple{C, MBS64{bits}}, scat::Scatter{C, MBS64{bits}})::Tuple{C, MBS64{bits}} where {C, bits}
     iszero(amp_out) && return tuple_mbs_out
-
-    @inbounds amp_in, mbs_in = mbs_out * scat
+    
+    amp_out, mbs_out = tuple_mbs_out
+    amp_in, mbs_in = mbs_out * scat
     return amp_in * amp_out, mbs_in
 end
 
@@ -107,20 +87,20 @@ It convinces the Julia compiler to use stack instead of heap.
 Notice: no checking whether collect_result and mbs_vec are in the same Hilbert space
 """
 function mul_add!(collect_result::MBS64Vector{bits, eltype},
-    scat_list::Vector{Scatter{N}}, mbs_vec::MBS64Vector{bits, eltype},
-    upper_hermitian::Bool) where{N, bits, eltype <: AbstractFloat}
+    scat_list::Vector{Scatter{Complex{eltype}, MBS64{bits}}}, mbs_vec::MBS64Vector{bits, eltype},
+    upper_hermitian::Bool) where{bits, eltype <: AbstractFloat}
 
     for scat in scat_list
-        # for (mbs_in, j) in mbs_vec.space.dict
         for (j, mbs_in) in enumerate(mbs_vec.space.list)
             amp, mbs_out = scat * mbs_in
             iszero(amp) && continue
             i = get(collect_result.space, mbs_out)
-            @boundscheck if iszero(i)
-                throw(DimensionMismatch("The operator scatters the state out of its Hilbert subspace."))
+            if i != 0
+                collect_result.vec[i] += amp * mbs_vec.vec[j]
+                upper_hermitian && i != j && (collect_result.vec[j] += conj(amp) * mbs_vec.vec[i])
+            else
+                # @boundscheck throw(DimensionMismatch("The operator scatters the state out of its Hilbert subspace."))
             end
-            collect_result.vec[i] += amp * mbs_vec.vec[j]
-            upper_hermitian && i != j && (collect_result.vec[j] += conj(amp) * mbs_vec.vec[i])
         end
     end
 end
@@ -129,13 +109,11 @@ end
 Use mul_add!() to avoid heap allocation.
 """
 function mul!(mbs_vec_result::MBS64Vector{bits, eltype}, 
-    op::MBOperator{T}, mbs_vec::MBS64Vector{bits, eltype}
-    ) where {bits, eltype <: AbstractFloat, T <: Tuple{Vararg{Vector{<:Scatter}}}}
+    op::MBOperator{Complex{eltype}, MBS64{bits}}, mbs_vec::MBS64Vector{bits, eltype}
+    ) where {bits, eltype <: AbstractFloat}
     
-    mbs_vec_result.vec .= 0.0
-    foreach(op.scats) do scat_list
-        mul_add!(mbs_vec_result, scat_list, mbs_vec, op.upper_hermitian)
-    end
+    mbs_vec_result.vec .= zero(Complex{eltype})
+    mul_add!(mbs_vec_result, op.scats, mbs_vec, op.upper_hermitian)
 end
 
 """
@@ -145,7 +123,7 @@ end
 Applying one or two operators on a many-body state.
 More number of operators is not supported and should be implemented in steps.
 """
-function *(op::MBOperator, mbs_vec_in::MBS64Vector{bits, eltype}
+function *(op::MBOperator{Complex{eltype}, MBS64{bits}}, mbs_vec_in::MBS64Vector{bits, eltype}
     )::MBS64Vector{bits, eltype} where {bits, eltype <: AbstractFloat}
     
     mbs_vec_out = similar(mbs_vec_in)
@@ -153,7 +131,7 @@ function *(op::MBOperator, mbs_vec_in::MBS64Vector{bits, eltype}
     return mbs_vec_out
 
 end
-function *(op2::MBOperator, op1::MBOperator, mbs_vec_in::MBS64Vector{bits, eltype}
+function *(op2::MBOperator{Complex{eltype}, MBS64{bits}}, op1::MBOperator, mbs_vec_in::MBS64Vector{bits, eltype}
     )::MBS64Vector{bits, eltype} where {bits, eltype <: AbstractFloat}
 
     mbs_vec_out = similar(mbs_vec_in)
@@ -176,16 +154,16 @@ The two term version does not take in upper_hermitian keywords (must be op.upper
 Notice: no checking whether mbs_bra and mbs_ket are in the same Hilbert space
 """
 function mul_add_bracket(mbs_vec_bra::MBS64Vector{bits, eltype},
-    scat::T, mbs_vec_ket::MBS64Vector{bits, eltype}, upper_hermitian::Bool
-    )::Complex{eltype} where{bits, eltype <: AbstractFloat, T <: Scatter}
+    scat::Scatter{Complex{eltype}, MBS64{bits}}, mbs_vec_ket::MBS64Vector{bits, eltype}, upper_hermitian::Bool
+    )::Complex{eltype} where{bits, eltype <: AbstractFloat}
 
-    collect_result::Complex{eltype} = 0.0
+    collect_result = zero(Complex{eltype})
     for (j, mbs_in) in enumerate(mbs_vec_ket.space.list)
         amp, mbs_out = scat * mbs_in
         iszero(amp) && continue
         i = get(mbs_vec_bra.space, mbs_out)
         if iszero(i)
-            @boundscheck throw(DimensionMismatch("The operator does not scatter the incident state to the output state's Hilbert subspace."))
+            # @boundscheck throw(DimensionMismatch("The operator does not scatter the incident state to the output state's Hilbert subspace."))
         else
             collect_result += conj(mbs_vec_bra.vec[i]) * amp * mbs_vec_ket.vec[j]
             if upper_hermitian && i != j
@@ -196,16 +174,16 @@ function mul_add_bracket(mbs_vec_bra::MBS64Vector{bits, eltype},
     return collect_result
 end
 function mul_add_bracket(mbs_vec_bra::MBS64Vector{bits, eltype},
-    scat2::T2, scat1::T1, mbs_vec_ket::MBS64Vector{bits, eltype},
-    )::Complex{eltype} where{bits, eltype <: AbstractFloat, T2 <: Scatter, T1 <:Scatter}
+    scat2::Scatter{Complex{eltype}, MBS64{bits}}, scat1::Scatter{Complex{eltype}, MBS64{bits}}, 
+    mbs_vec_ket::MBS64Vector{bits, eltype})::Complex{eltype} where{bits, eltype <: AbstractFloat}
 
-    collect_result = Complex{eltype}(0.0)
+    collect_result = zero(Complex{eltype})
     for (j, mbs_in) in enumerate(mbs_vec_ket.space.list)
         amp, mbs_out = scat2 * (scat1 * mbs_in)
         iszero(amp) && continue         # necessary for multiple Scatter without middle dictionary
         i = get(mbs_vec_bra.space, mbs_out)
         if iszero(i)
-            @boundscheck throw(DimensionMismatch("The operators do not scatter the incident state to the output state's Hilbert subspace."))
+            # @boundscheck throw(DimensionMismatch("The operators do not scatter the incident state to the output state's Hilbert subspace."))
         else
             collect_result += conj(mbs_vec_bra.vec[i]) * amp * mbs_vec_ket.vec[j]
         end
@@ -219,8 +197,8 @@ Bracket value of a Vector of Scatter{N}, summing over bracket value of each Scat
 Can be converted to the multi-threaded version.
 """
 function mul_add_bracket_scatlist(mbs_vec_bra::MBS64Vector{bits, eltype},
-    scat_list::Vector{T}, mbs_vec_ket::MBS64Vector{bits, eltype}, upper_hermitian::Bool
-    )::Complex{eltype} where{bits, eltype <: AbstractFloat, T <: Scatter}
+    scat_list::Vector{Scatter{Complex{eltype}, MBS64{bits}}}, mbs_vec_ket::MBS64Vector{bits, eltype}, 
+    upper_hermitian::Bool)::Complex{eltype} where{bits, eltype <: AbstractFloat}
 
     sum(scat_list) do scat
         mul_add_bracket(mbs_vec_bra, scat, mbs_vec_ket, upper_hermitian)
@@ -228,8 +206,8 @@ function mul_add_bracket_scatlist(mbs_vec_bra::MBS64Vector{bits, eltype},
 
 end
 function mul_add_bracket_scatlist_threaded(mbs_vec_bra::MBS64Vector{bits, eltype},
-    scat_list::Vector{T}, mbs_vec_ket::MBS64Vector{bits, eltype}, upper_hermitian::Bool
-    )::Complex{eltype} where{bits, eltype <: AbstractFloat, T <: Scatter}
+    scat_list::Vector{Scatter{Complex{eltype}, MBS64{bits}}}, mbs_vec_ket::MBS64Vector{bits, eltype},
+    upper_hermitian::Bool)::Complex{eltype} where{bits, eltype <: AbstractFloat}
 
     # A vector to store the partial result from each thread
     thread_brackets = zeros(Complex{eltype}, Threads.nthreads())
@@ -239,21 +217,21 @@ function mul_add_bracket_scatlist_threaded(mbs_vec_bra::MBS64Vector{bits, eltype
         thread_brackets[tid] += mul_add_bracket(mbs_vec_bra, scat, mbs_vec_ket, upper_hermitian)
     end
 
-    return sum(thread_brackets, init = Complex{eltype}(0.0))
+    return sum(thread_brackets, init = zero(Complex{eltype}))
 end
 function mul_add_bracket_scatlist(mbs_vec_bra::MBS64Vector{bits, eltype},
-    scat_list2::Vector{T2}, scat_list1::Vector{T1}, mbs_vec_ket::MBS64Vector{bits, eltype},
-    )::Complex{eltype} where{bits, eltype <: AbstractFloat, T2 <: Scatter, T1 <:Scatter}
+    scat_list2::Vector{Scatter{Complex{eltype}, MBS64{bits}}}, scat_list1::Vector{Scatter{Complex{eltype}, MBS64{bits}}},
+    mbs_vec_ket::MBS64Vector{bits, eltype})::Complex{eltype} where{bits, eltype <: AbstractFloat}
 
-    collect_result = Complex{eltype}(0.0)
+    collect_result = zero(Complex{eltype})
     for scat2 in scat_list2, scat1 in scat_list1
         collect_result += mul_add_bracket(mbs_vec_bra, scat2, scat1, mbs_vec_ket)
     end
     return collect_result
 end
 function mul_add_bracket_scatlist_threaded(mbs_vec_bra::MBS64Vector{bits, eltype},
-    scat_list2::Vector{T2}, scat_list1::Vector{T1}, mbs_vec_ket::MBS64Vector{bits, eltype},
-    )::Complex{eltype} where{bits, eltype <: AbstractFloat, T2 <: Scatter, T1 <:Scatter}
+    scat_list2::Vector{Scatter{Complex{eltype}, MBS64{bits}}}, scat_list1::Vector{Scatter{Complex{eltype}, MBS64{bits}}},
+    mbs_vec_ket::MBS64Vector{bits, eltype})::Complex{eltype} where{bits, eltype <: AbstractFloat}
 
     # A vector to store the partial result from each thread
     thread_brackets = zeros(Complex{eltype}, Threads.nthreads())
@@ -265,7 +243,7 @@ function mul_add_bracket_scatlist_threaded(mbs_vec_bra::MBS64Vector{bits, eltype
         end
     end
     
-    return sum(thread_brackets, init = Complex{eltype}(0.0))
+    return sum(thread_brackets, init = zero(Complex{eltype}))
 
 end
 
@@ -282,31 +260,22 @@ Compute the bracket <bra::MBS64Vector | op::MBOperator | ket::MBS64Vector>\n
 or the bracket <bra::MBS64Vector | op2::MBOperator * op1::MBOperator | ket::MBS64Vector>
 """
 function ED_bracket(mbs_vec_bra::MBS64Vector{bits, eltype}, 
-    op::MBOperator{T}, mbs_vec_ket::MBS64Vector{bits, eltype}
-    )::Complex{eltype} where {bits, eltype <: AbstractFloat, T <: Tuple{Vararg{Vector{<:Scatter}}}}
+    op::MBOperator{Complex{eltype}, MBS64{bits}}, mbs_vec_ket::MBS64Vector{bits, eltype}
+    )::Complex{eltype} where {bits, eltype <: AbstractFloat}
 
-    bracket = Complex{eltype}(0.0)
-    foreach(op.scats) do scat_list
-        bracket += mul_add_bracket_scatlist(mbs_vec_bra, scat_list, mbs_vec_ket, op.upper_hermitian)
-    end
+    bracket = mul_add_bracket_scatlist(mbs_vec_bra, op.scats, mbs_vec_ket, op.upper_hermitian)
     return bracket
 end
 function ED_bracket(mbs_vec_bra::MBS64Vector{bits, eltype}, 
-    op2::MBOperator{T2}, op1::MBOperator{T1}, mbs_vec_ket::MBS64Vector{bits, eltype}
-    )::Complex{eltype} where {bits, eltype <: AbstractFloat, 
-    T2 <: Tuple{Vararg{Vector{<:Scatter}}}, T1 <: Tuple{Vararg{Vector{<:Scatter}}}}
+    op2::MBOperator{Complex{eltype}, MBS64{bits}}, op1::MBOperator{Complex{eltype}, MBS64{bits}}, 
+    mbs_vec_ket::MBS64Vector{bits, eltype})::Complex{eltype} where {bits, eltype <: AbstractFloat}
 
     if op1.upper_hermitian || op2.upper_hermitian
         println("one-by-one multiplication")
         return ED_bracket(mbs_vec_bra, op2, op1*mbs_vec_ket)
     end 
 
-    bracket = Complex{eltype}(0.0)
-    foreach(op1.scats) do scat_list1
-        foreach(op2.scats) do scat_list2
-            bracket += mul_add_bracket_scatlist(mbs_vec_bra, scat_list2, scat_list1, mbs_vec_ket)
-        end
-    end
+    bracket = mul_add_bracket_scatlist(mbs_vec_bra, op2.scats, op1.scats, mbs_vec_ket)
     return bracket
 end
 """
@@ -321,30 +290,21 @@ end
 or the bracket <bra::MBS64Vector | op2::MBOperator * op1::MBOperator | ket::MBS64Vector>
 """
 function ED_bracket_threaded(mbs_vec_bra::MBS64Vector{bits, eltype},
-    op::MBOperator{T}, mbs_vec_ket::MBS64Vector{bits, eltype}
-    )::Complex{eltype} where {bits, eltype <: AbstractFloat, T <: Tuple{Vararg{Vector{<:Scatter}}}}
+    op::MBOperator{Complex{eltype}, MBS64{bits}}, mbs_vec_ket::MBS64Vector{bits, eltype}
+    )::Complex{eltype} where {bits, eltype <: AbstractFloat}
 
-    bracket = Complex{eltype}(0.0)
-    foreach(op.scats) do scat_list
-        bracket += mul_add_bracket_scatlist_threaded(mbs_vec_bra, scat_list, mbs_vec_ket, op.upper_hermitian)
-    end
+    bracket = mul_add_bracket_scatlist_threaded(mbs_vec_bra, op.scats, mbs_vec_ket, op.upper_hermitian)
     return bracket
 end
 function ED_bracket_threaded(mbs_vec_bra::MBS64Vector{bits, eltype},
-    op2::MBOperator{T2}, op1::MBOperator{T1}, mbs_vec_ket::MBS64Vector{bits, eltype}
-    )::Complex{eltype} where {bits, eltype <: AbstractFloat,
-    T1 <: Tuple{Vararg{Vector{<:Scatter}}}, T2 <: Tuple{Vararg{Vector{<:Scatter}}}}
+    op2::MBOperator{Complex{eltype}, MBS64{bits}}, op1::MBOperator{Complex{eltype}, MBS64{bits}}, 
+    mbs_vec_ket::MBS64Vector{bits, eltype})::Complex{eltype} where {bits, eltype <: AbstractFloat}
     
     if op1.upper_hermitian || op2.upper_hermitian
         println("one-by-one multiplication")
         return ED_bracket(mbs_vec_bra, op2, op1*mbs_vec_ket)
     end
     
-    bracket = Complex{eltype}(0.0)
-    foreach(op1.scats) do scat_list1
-        foreach(op2.scats) do scat_list2
-            bracket += mul_add_bracket_scatlist_threaded(mbs_vec_bra, scat_list2, scat_list1, mbs_vec_ket)
-        end
-    end
+    bracket = mul_add_bracket_scatlist_threaded(mbs_vec_bra, op2.scats, op1.scats, mbs_vec_ket)
     return bracket
 end

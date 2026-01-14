@@ -280,7 +280,7 @@ function EDsolve(subspace::HilbertSubspace{bits}, Hamiltonian::MBOperator;
             @warn "Linear map may be slow for dim=$dim. Consider using :sparse method."
         end
 
-        H_map = LinearMap(Hamiltonian, subspace, element_type)
+        H_map = LinearMap(Hamiltonian, subspace)
 
         # Solve the eigenvalue problem
         if showtime
@@ -295,7 +295,7 @@ function EDsolve(subspace::HilbertSubspace{bits}, Hamiltonian::MBOperator;
         return energies, vectors
 
     else
-        return EDsolve(subspace, Hamiltonian.scats...; N, showtime, method, 
+        return EDsolve(subspace, Hamiltonian.scats; N, showtime, method, 
             element_type, index_type, min_sparse_dim, max_dense_dim, 
             ishermitian, krylovkit_kwargs...
         )
