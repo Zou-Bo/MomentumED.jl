@@ -7,6 +7,8 @@
 """
 
 # depreciated, only complete_lower always false
+
+
 function ED_HamiltonianMatrix_threaded_COO2CSC(
     subspace::HilbertSubspace{bits}, 
     sorted_scat_lists::Vector{<: Scatter}...; 
@@ -77,39 +79,33 @@ function ED_HamiltonianMatrix_threaded_CSCdirect(
     # --- 1. Partition Columns for Multithreading ---
     n_chunks = Threads.nthreads()
     cols_per_chunk = div(n_states, n_chunks)
+    start_col = [(t - 1) * cols_per_chunk + 1 for t in 1:n_chunks]
+    end_col = [(t == n_chunks) ? n_states : t * cols_per_chunk for t in 1:n_chunks]
     
     # Storage for the vertical strips of the matrix
-    strips = Vector{SparseMatrixCSC{Complex{ET}, IT}}(undef, n_chunks)
+    # colptr must start with 1.
+    colptr = Vector{IT}(undef, n_states+1)
+    colptr[1] = one(IT)
+    strip_rowval = Vector{Vector{IT}}(undef, n_chunks)
+    strip_nzval = Vector{Vector{Complex{ET}}}(undef, n_chunks)
 
     # --- 2. Parallel Construction ---
-    Threads.@threads for t in 1:n_chunks
+    Threads.@threads :static for t in 1:n_chunks
         # --- ALLOCATE BUFFERS ONCE PER THREAD ---
+        # Per-thread buffer: vector of (row, val) pairs
         # These will grow to the size of the largest column and stay there.
-        col_buf_I = Vector{IT}()
-        col_buf_V = Vector{Complex{ET}}()
-        col_buf_P = Vector{Int}()
-
-        # Determine the column range for this thread
-        start_col = (t - 1) * cols_per_chunk + 1
-        end_col = (t == n_chunks) ? n_states : t * cols_per_chunk
+        col_buf = Vector{Tuple{IT, Complex{ET}}}()
         
         # Pre-allocate CSC vectors for this strip
-        # strip_colptr must start with 1.
-        strip_colptr = Vector{IT}(undef, 1)
-        strip_colptr[1] = 1
-        
-        # We start with empty data vectors and append to them dynamically.
-        # Julia's push! is amortized O(1), so this is efficient.
-        strip_rowval = Vector{IT}()
-        strip_nzval = Vector{Complex{ET}}()
+        strip_rowval[t] = Vector{IT}()
+        strip_nzval[t] = Vector{Complex{ET}}()
 
         # Buffers reused for all the j
-        # Iterate strictly over the columns THIS thread owns
-        for j in start_col:end_col
+        # Iterate strictly over the columns in THIS chunk
+        for j in start_col[t]:end_col[t]
 
             mbs_in = subspace.list[j]
-            empty!(col_buf_I)
-            empty!(col_buf_V)
+            empty!(col_buf)
 
             if isupper && complete_lower
                 for scat_list in sorted_scat_lists
@@ -118,16 +114,14 @@ function ED_HamiltonianMatrix_threaded_CSCdirect(
                         if !iszero(amp)
                             i = get(subspace, mbs_out)
                             @assert i != 0 "H is not momentum- or component-conserving."
-                            push!(col_buf_I, i)
-                            push!(col_buf_V, amp)
+                            push!(col_buf, (i, amp))
                         end
                         if !isdiagonal(scat)
                             amp, mbs_out = mbs_in * scat # inversely scatting
                             if !iszero(amp)
                                 i = get(subspace, mbs_out)
                                 @assert i != 0 "H is not momentum- or component-conserving."
-                                push!(col_buf_I, i)
-                                push!(col_buf_V, conj(amp))
+                                push!(col_buf, (i, conj(amp)))
                             end
                         end
                     end
@@ -139,59 +133,60 @@ function ED_HamiltonianMatrix_threaded_CSCdirect(
                         if !iszero(amp)
                             i = get(subspace, mbs_out)
                             @assert i != 0 "H is not momentum- or component-conserving."
-                            push!(col_buf_I, i)
-                            push!(col_buf_V, amp)
+                            push!(col_buf, (i, amp))
                         end
                     end
                 end
             end
 
-            if !isempty(col_buf_I)
-                m = length(col_buf_I)
-                resize!(col_buf_P, m)
-                # In-place sort of permutation indices
-                sortperm!(col_buf_P, col_buf_I) 
-                permute!(col_buf_I, col_buf_P)
-                permute!(col_buf_V, col_buf_P)
-
-                r = 1
-                l = 1               # length of processed part
-                i = col_buf_I[r]    # row-index of current element
-
-                # main loop
-                while r < m
-                    r += 1
-                    i2 = col_buf_I[r]
-                    if i2 == i  # accumulate r-th to the l-th entry
-                        col_buf_V[l] += col_buf_V[r]
-                    else  # advance l, and move r-th to l-th
-                        l += 1
-                        i = i2
-                        if l < r
-                            col_buf_I[l] = i
-                            col_buf_V[l] = col_buf_V[r]
-                        end
+            if !isempty(col_buf)
+                # sort by row index, in-place, no permutation array
+                sort!(col_buf)  
+                # Dedup + accumulate, emit directly
+                i, v = col_buf[1]
+                for k in 2:length(col_buf)
+                    i2, v2 = col_buf[k]
+                    if i2 == i
+                        v += v2
+                    else
+                        push!(strip_rowval[t], i)
+                        push!(strip_nzval[t], v)
+                        i, v = i2, v2
                     end
                 end
-
-                # Direct Append (No sorting needed per user contract)
-                append!(strip_rowval, view(col_buf_I, 1:l))
-                append!(strip_nzval, view(col_buf_V, 1:l))
+                push!(strip_rowval[t], i)
+                push!(strip_nzval[t], v)
             end
-            
             # Update colptr: The next column starts where the current one ends
-            push!(strip_colptr, length(strip_nzval) + 1)
+            colptr[j+1] = length(strip_rowval[t])
         end
-        
-        # Create the strip (n_states x chunk_width)
-        chunk_width = end_col - start_col + 1
-        strips[t] = SparseMatrixCSC(n_states, chunk_width, strip_colptr, strip_rowval, strip_nzval)
     end
 
     # --- 3. Assembly ---
-    # Glue strips together side-by-side. 
-    # This is a fast memory copy operation.
-    H = hcat(strips...)
+    colptr[1] = one(IT)
+    for t in 1:n_chunks
+        colptr[1+start_col[t]:1+end_col[t]] .+= colptr[start_col[t]]
+    end
+
+    # for checking in development
+    @assert colptr[end] == sum(length, strip_rowval) + 1
+
+    rowval = Vector{IT}(undef, 0)
+    sizehint!(rowval, colptr[end] - one(IT))
+    for t in 1:n_chunks
+        append!(rowval, strip_rowval[t])
+        empty!(strip_rowval[t])
+    end
+
+    nzval = Vector{Complex{ET}}(undef, 0)
+    sizehint!(nzval, colptr[end] - one(IT))
+    for t in 1:n_chunks
+        append!(nzval, strip_nzval[t])
+        empty!(strip_nzval[t])
+    end
+
+    H = SparseMatrixCSC(n_states, n_states, colptr, rowval, nzval)
+
 
     if isupper && !complete_lower    
         # Wrap in Hermitian

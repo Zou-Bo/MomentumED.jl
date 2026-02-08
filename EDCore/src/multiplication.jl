@@ -270,10 +270,12 @@ function ED_bracket(mbs_vec_bra::MBS64Vector{bits, eltype},
     op2::MBOperator{Complex{eltype}, MBS64{bits}}, op1::MBOperator{Complex{eltype}, MBS64{bits}}, 
     mbs_vec_ket::MBS64Vector{bits, eltype})::Complex{eltype} where {bits, eltype <: AbstractFloat}
 
-    if op1.upper_hermitian || op2.upper_hermitian
-        println("one-by-one multiplication")
-        return ED_bracket(mbs_vec_bra, op2, op1*mbs_vec_ket)
-    end 
+    if op1.upper_hermitian
+        op1 = hermitian_complete(op1)
+    end
+    if op2.upper_hermitian
+        op2 = hermitian_complete(op2)
+    end
 
     bracket = mul_add_bracket_scatlist(mbs_vec_bra, op2.scats, op1.scats, mbs_vec_ket)
     return bracket
@@ -300,9 +302,11 @@ function ED_bracket_threaded(mbs_vec_bra::MBS64Vector{bits, eltype},
     op2::MBOperator{Complex{eltype}, MBS64{bits}}, op1::MBOperator{Complex{eltype}, MBS64{bits}}, 
     mbs_vec_ket::MBS64Vector{bits, eltype})::Complex{eltype} where {bits, eltype <: AbstractFloat}
     
-    if op1.upper_hermitian || op2.upper_hermitian
-        println("one-by-one multiplication")
-        return ED_bracket(mbs_vec_bra, op2, op1*mbs_vec_ket)
+    if op1.upper_hermitian
+        op1 = hermitian_complete(op1)
+    end
+    if op2.upper_hermitian
+        op2 = hermitian_complete(op2)
     end
     
     bracket = mul_add_bracket_scatlist_threaded(mbs_vec_bra, op2.scats, op1.scats, mbs_vec_ket)

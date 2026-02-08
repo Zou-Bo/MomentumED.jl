@@ -77,3 +77,14 @@ function adjoint(op::MBOperator{C, MBS})::MBOperator{C, MBS} where {C, MBS}
     op_new = deepcopy(op)
     return adjoint!(op_new)
 end
+
+# this function does not check whether input is valid
+function hermitian_complete(op::MBOperator{C, MBS})::MBOperator{C, MBS} where {C, MBS}
+    newscats = copy(op.scats)
+    for i in eachindex(op.scats)
+        if !isdiagonal(op.scats[i])
+            push!(newscats, adjoint(op.scats[i]))
+        end
+    end
+    return MBOperator(newscats; upper_hermitian=false)
+end
