@@ -1,5 +1,6 @@
 using LinearAlgebra
 
+# need update
 """
     struct MBOperator{T <: Tuple{Vararg{Vector{<:Scatter}}}}
         scats::T

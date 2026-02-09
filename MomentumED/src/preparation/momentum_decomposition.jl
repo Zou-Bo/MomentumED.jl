@@ -27,16 +27,17 @@ para = EDPara(k_list=[0 1; 0 0], Nc_hopping=1, Nc_conserve=1)
 states = ED_mbslist_onecomponent(para, 2)  # 2 particles in 2 orbitals
 ```
 """
-function mbslist_onecomponent(para::EDPara, N_in_one::Int64)
+function mbslist_onecomponent(para::EDPara, N_in_one::Int64, start_end::Int64...)
     Nstate = para.Nk * para.Nc_hopping
     @assert 0 <= N_in_one <= Nstate "Invalid number of electrons in one component"
-    return ColexMBS64(Nstate, N_in_one)
+    return ColexMBS64(Nstate, N_in_one, start_end...)
 end
-function mbslist_onecomponent(para::EDPara, N_in_one::Int64, mask::Union{Nothing, Vector{Int64}})
+function mbslist_onecomponent(para::EDPara, N_in_one::Int64, mask::Union{Nothing, Vector{Int64}}, start_end::Int64...)
     isnothing(mask) && return mbslist_onecomponent(para, N_in_one)
     Nstate = para.Nk * para.Nc_hopping
     @assert 0 <= N_in_one <= Nstate "Invalid number of electrons in one component"
     @assert isempty(mask) || 1 <= minimum(mask) && maximum(mask) <= Nstate "Invalid orbital index in mask for one component, mask=$mask, Nstate=$Nstate"
+    # return ColexMBS64Mask(Nstate, N_in_one, mask, start_end...)
     return ColexMBS64Mask(Nstate, N_in_one, mask)
 end
 
@@ -82,7 +83,7 @@ function MBS_totalmomentum(para::EDPara, i_list::Tuple{Vararg{Int64}})::NTuple{2
 end
 
 """
-    mbslist_recursive_iteration!(subspaces, subspace_k1, subspace_k2, para, N_each_component, accumulated_mbs, accumulated_momentum; mask=nothing)
+    mbslist_recursive_iteration!(subspace_lists, subspace_k1, subspace_k2, para, N_each_component, accumulated_mbs, accumulated_momentum; mask=nothing)
 
 An internal recursive function that constructs many-body states and sorts them into momentum subspaces.
 
@@ -105,11 +106,11 @@ The `mask` argument, if provided, restricts the set of orbitals that can be occu
 `check_mask_sorted::Bool=false` will assert `mask` is sorted if it's provided. 
 It will only check once at the begining of outermost iteration.
 """
-function mbslist_recursive_iteration!(subspaces::Vector{HilbertSubspace{bits}}, 
+function mbslist_recursive_iteration!(subspace_lists::Vector{Vector{MBS64{bits}}}, 
     subspace_k1::Vector{Int64}, subspace_k2::Vector{Int64}, 
     para::EDPara, N_each_component::Vector{Int64}, 
     accumulated_mbs::MBS64 = reinterpret(MBS64{0}, 0), 
-    accumulated_momentum::Tuple{Int64, Int64} = (0, 0); 
+    accumulated_momentum::Tuple{Int64, Int64} = (0, 0), start_end::Int64...; 
     mask::Union{Nothing, Vector{Int64}} = nothing,
     check_mask_sorted::Bool = false,
     selection_rule::Function = Returns(true),
@@ -126,10 +127,10 @@ function mbslist_recursive_iteration!(subspaces::Vector{HilbertSubspace{bits}},
             num_component_orbitals = para.Nk * para.Nc_hopping* (length(N_each_component) - 1)
             i = searchsortedlast(mask, num_component_orbitals)
             mask_this_component = mask[i+1:end] .- num_component_orbitals
-            for mbs_smaller in mbslist_onecomponent(para, abs(N_each_component[end]), mask_this_component)
+            for mbs_smaller in mbslist_onecomponent(para, abs(N_each_component[end]), mask_this_component, start_end...)
                 PRINT_RECURSIVE_MOMENTUM_DIVISION && println("generated mbs in the new component:\n$mbs_smaller")
                 new_momentum = sign(N_each_component[end]) .* MBS_totalmomentum(para, mbs_smaller)
-                mbslist_recursive_iteration!(subspaces, subspace_k1, subspace_k2, para, 
+                mbslist_recursive_iteration!(subspace_lists, subspace_k1, subspace_k2, para, 
                     N_each_component[begin:end-1],          # remaining components
                     accumulated_mbs * mbs_smaller,          # updated MBS64
                     accumulated_momentum .+ new_momentum;   # updated momentum 
@@ -138,10 +139,10 @@ function mbslist_recursive_iteration!(subspaces::Vector{HilbertSubspace{bits}},
                 )
             end
         else
-            for mbs_smaller in mbslist_onecomponent(para, abs(N_each_component[end]))
+            for mbs_smaller in mbslist_onecomponent(para, abs(N_each_component[end]), start_end...)
                 PRINT_RECURSIVE_MOMENTUM_DIVISION && println("generated mbs in the new component:\n$mbs_smaller")
                 new_momentum = sign(N_each_component[end]) .* MBS_totalmomentum(para, mbs_smaller)
-                mbslist_recursive_iteration!(subspaces, subspace_k1, subspace_k2, para, 
+                mbslist_recursive_iteration!(subspace_lists, subspace_k1, subspace_k2, para, 
                     N_each_component[begin:end-1],          # remaining components
                     accumulated_mbs * mbs_smaller,          # updated MBS64
                     accumulated_momentum .+ new_momentum;   # updated momentum 
@@ -160,7 +161,7 @@ function mbslist_recursive_iteration!(subspaces::Vector{HilbertSubspace{bits}},
             PRINT_RECURSIVE_MOMENTUM_DIVISION && println("\tfinally: momentum $k1, $k2\t$accumulated_mbs")
             index = findfirst((subspace_k1 .== k1) .& (subspace_k2 .== k2))
             if !isnothing(index)
-                push!(subspaces[index].list, accumulated_mbs)
+                push!(subspace_lists[index], accumulated_mbs)
             end
         end
     end
@@ -204,7 +205,7 @@ function ED_momentum_subspaces(para::EDPara, N_each_component;
     dict::Bool = false, index_type::Type = Int64,  momentum_restriction::Bool = false, 
     k1range::Tuple{Int64, Int64} = (-2,2), k2range::Tuple{Int64, Int64} = (-2,2),
     momentum_list::Vector{Tuple{Int64, Int64}} = Tuple{Int64, Int64}[],
-    mask::Union{Nothing, Vector{Int64}} = nothing,
+    mask::Union{Nothing, Vector{Int64}} = nothing
     )::Tuple{Vector{HilbertSubspace}, Vector{Int64}, Vector{Int64}}
 
     @assert length(N_each_component) == para.Nc_conserve "The length of number_list must be equal to the number of conserved components $(para.Nc_conserve)"
@@ -258,12 +259,39 @@ function ED_momentum_subspaces(para::EDPara, N_each_component;
     end
 
     bits = para.Nk * para.Nc
-    subspaces = [HilbertSubspace(MBS64{bits}[]; index_type) for _ in eachindex(subspace_k1)]
-    mbslist_recursive_iteration!(
-        subspaces, subspace_k1, subspace_k2, 
-        para, collect(N_each_component);
-        mask = isnothing(mask) ? nothing : sort!(mask)
-    )
+    # to generate approximated chunk division
+    n_threads = Threads.nthreads()
+    n_outercomponent = binomial(para.Nk * para.Nc_hopping, N_each_component[end])
+    n_chunks = n_outercomponent < 2n_threads ? 1 : n_threads
+    if !isnothing(mask)
+        n_chunks = 1
+    end
+    chunk_size, chunk_res = divrem(n_outercomponent, n_chunks)
+    chunk_ends = [t * chunk_size + min(chunk_res, t) for t in 1:n_chunks]
+    chunk_starts = [1; chunk_ends[begin:end-1] .+ 1]
+    # multi-thread iteratively generate basis of each chunk
+    local_list_of_lists = [[Vector{MBS64{bits}}() for sn in eachindex(subspace_k1)] for t in 1:n_chunks]
+    Threads.@threads :static for t in 1:n_chunks
+        mbslist_recursive_iteration!(
+            local_list_of_lists[t], subspace_k1, subspace_k2, 
+            para, collect(N_each_component),
+            reinterpret(MBS64{0}, 0),              # accumulated_mbs
+            (0, 0),                                # accumulated_momentum
+            chunk_starts[t], chunk_ends[t];        # give the chunk start and end only for the outermost iteration
+            mask = isnothing(mask) ? nothing : sort!(mask),
+        )
+    end
+    # combine chunks
+    subspaces = Vector{HilbertSubspace{bits}}(undef, length(subspace_k1))
+    for sn in eachindex(subspace_k1)
+        list = Vector{MBS64{bits}}()
+        sizehint!(list, sum(t -> length(local_list_of_lists[t][sn]), 1:n_chunks))
+        for t in eachindex(local_list_of_lists)
+            append!(list, local_list_of_lists[t][sn])
+            empty!(local_list_of_lists[t][sn])
+        end
+        subspaces[sn] = HilbertSubspace(list; index_type)
+    end
 
     empty_mask = length.(subspaces) .!= 0
     subspaces = subspaces[empty_mask]
@@ -275,11 +303,6 @@ function ED_momentum_subspaces(para::EDPara, N_each_component;
             make_dict!(subspaces[i]; index_type) 
         end
     end
-    
-    # # Find k=0 block index
-    # block_num_0 = findfirst(eachindex(block_k1)) do bn
-    #     block_k1[bn] == 0 && block_k2[bn] == 0
-    # end
-    
-    return subspaces, subspace_k1, subspace_k2 #, something(block_num_0, 0)
+
+    return subspaces, subspace_k1, subspace_k2
 end

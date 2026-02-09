@@ -202,11 +202,11 @@ function EDsolve(subspace::HilbertSubspace{bits}, sorted_scat_lists::Vector{<: S
 
         # Construct sparse Hamiltonian matrix from Scatter terms
         if showtime
-            @time H = SparseHmltMatrix(subspace, sorted_scat_lists...;
+            @time H = SparseHmltMatrix(subspace, vcat(sorted_scat_lists...);
                 element_type = element_type, index_type = index_type
             )
         else
-            H = SparseHmltMatrix(subspace, sorted_scat_lists...;
+            H = SparseHmltMatrix(subspace, vcat(sorted_scat_lists...);
                 element_type = element_type, index_type = index_type
             )
         end

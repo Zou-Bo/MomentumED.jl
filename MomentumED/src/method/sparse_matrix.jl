@@ -11,7 +11,7 @@
 
 function ED_HamiltonianMatrix_threaded_COO2CSC(
     subspace::HilbertSubspace{bits}, 
-    sorted_scat_lists::Vector{<: Scatter}...; 
+    scat_list::Vector{Scatter{Complex{ET}, MBS64{bits}}}; 
     isupper::Bool = true, complete_lower::Bool = false,
     element_type::Type{ET} = Float64, index_type::Type{IT} = Int64,
 ) where {bits, ET <: AbstractFloat, IT <: Integer}
@@ -34,16 +34,15 @@ function ED_HamiltonianMatrix_threaded_COO2CSC(
         tid = Threads.threadid() - Threads.nthreads(:interactive)
         mbs_in = subspace.list[j]
         
-        for scat_list in sorted_scat_lists
-            for scat in scat_list
-                amp, mbs_out = scat * mbs_in
-                if !iszero(amp)
-                    i = get(subspace, mbs_out)
-                    @assert i != 0 "H is not momentum- or component-conserving."
-                    push!(thread_I[tid], i)
-                    push!(thread_J[tid], j)
-                    push!(thread_V[tid], amp)
-                end
+
+        for scat in scat_list
+            amp, mbs_out = scat * mbs_in
+            if !iszero(amp)
+                i = get(subspace, mbs_out)
+                @assert i != 0 "H is not momentum- or component-conserving."
+                push!(thread_I[tid], i)
+                push!(thread_J[tid], j)
+                push!(thread_V[tid], amp)
             end
         end
     end
@@ -56,15 +55,19 @@ function ED_HamiltonianMatrix_threaded_COO2CSC(
     # Convert to sparse matrix (Hermitian)
     H = sparse(I, J, V, n_states, n_states)
     if isupper
-        return sparse(Hermitian(H, :U))
+        return Hermitian(H, :U)
     else
         return H
     end
 end
 
+function _isless_row_val_pair(a,b)
+    first(a) < first(b)
+end
+
 function ED_HamiltonianMatrix_threaded_CSCdirect(
     subspace::HilbertSubspace{bits}, 
-    sorted_scat_lists::Vector{<: Scatter}...; 
+    scat_list::Vector{Scatter{Complex{ET}, MBS64{bits}}}; 
     isupper::Bool = true, complete_lower::Bool = true,
     element_type::Type{ET} = Float64, index_type::Type{IT} = Int64,
 ) where {bits, ET <: AbstractFloat, IT <: Integer}
@@ -78,9 +81,9 @@ function ED_HamiltonianMatrix_threaded_CSCdirect(
 
     # --- 1. Partition Columns for Multithreading ---
     n_chunks = Threads.nthreads()
-    cols_per_chunk = div(n_states, n_chunks)
-    start_col = [(t - 1) * cols_per_chunk + 1 for t in 1:n_chunks]
-    end_col = [(t == n_chunks) ? n_states : t * cols_per_chunk for t in 1:n_chunks]
+    cols_per_chunk, residue_cols = divrem(n_states, n_chunks)
+    end_col = [t * cols_per_chunk + min(residue_cols, t) for t in 1:n_chunks]
+    start_col = [1; end_col[begin:end-1] .+ 1]
     
     # Storage for the vertical strips of the matrix
     # colptr must start with 1.
@@ -93,7 +96,7 @@ function ED_HamiltonianMatrix_threaded_CSCdirect(
     Threads.@threads :static for t in 1:n_chunks
         # --- ALLOCATE BUFFERS ONCE PER THREAD ---
         # Per-thread buffer: vector of (row, val) pairs
-        # These will grow to the size of the largest column and stay there.
+        # It will grow to the size of the largest column and stay there.
         col_buf = Vector{Tuple{IT, Complex{ET}}}()
         
         # Pre-allocate CSC vectors for this strip
@@ -108,40 +111,41 @@ function ED_HamiltonianMatrix_threaded_CSCdirect(
             empty!(col_buf)
 
             if isupper && complete_lower
-                for scat_list in sorted_scat_lists
-                    for scat in scat_list
-                        amp, mbs_out = scat * mbs_in
+                for scat in scat_list
+                    amp, mbs_out = scat * mbs_in
+                    if !iszero(amp)
+                        i = get(subspace, mbs_out)
+                        # @assert i != 0 "H is not momentum- or component-conserving."
+                        iszero(i) || push!(col_buf, (i, amp))
+                    end
+                    if !isdiagonal(scat)
+                        amp, mbs_out = mbs_in * scat # inversely scatting
                         if !iszero(amp)
                             i = get(subspace, mbs_out)
-                            @assert i != 0 "H is not momentum- or component-conserving."
-                            push!(col_buf, (i, amp))
-                        end
-                        if !isdiagonal(scat)
-                            amp, mbs_out = mbs_in * scat # inversely scatting
-                            if !iszero(amp)
-                                i = get(subspace, mbs_out)
-                                @assert i != 0 "H is not momentum- or component-conserving."
-                                push!(col_buf, (i, conj(amp)))
-                            end
+                            # @assert i != 0 "H is not momentum- or component-conserving."
+                            iszero(i) || push!(col_buf, (i, conj(amp)))
                         end
                     end
                 end
             else
-                for scat_list in sorted_scat_lists
-                    for scat in scat_list
-                        amp, mbs_out = scat * mbs_in
-                        if !iszero(amp)
-                            i = get(subspace, mbs_out)
-                            @assert i != 0 "H is not momentum- or component-conserving."
-                            push!(col_buf, (i, amp))
-                        end
+                for scat in scat_list
+                    amp, mbs_out = scat * mbs_in
+                    if !iszero(amp)
+                        i = get(subspace, mbs_out)
+                        # @assert i != 0 "H is not momentum- or component-conserving."
+                        iszero(i) || push!(col_buf, (i, amp))
                     end
                 end
             end
 
+            # This causes catastraphy! Why?
+            # sizehint!(strip_rowval[t], length(strip_rowval[t]) + length(col_buf))
+            # sizehint!(strip_nzval[t] , length(strip_nzval[t])  + length(col_buf))
+
             if !isempty(col_buf)
                 # sort by row index, in-place, no permutation array
-                sort!(col_buf)  
+                # sort!(col_buf, lt = (a,b) -> first(a) < first(b))  
+                sort!(col_buf, lt = _isless_row_val_pair)  
                 # Dedup + accumulate, emit directly
                 i, v = col_buf[1]
                 for k in 2:length(col_buf)
@@ -186,7 +190,6 @@ function ED_HamiltonianMatrix_threaded_CSCdirect(
     end
 
     H = SparseMatrixCSC(n_states, n_states, colptr, rowval, nzval)
-
 
     if isupper && !complete_lower    
         # Wrap in Hermitian

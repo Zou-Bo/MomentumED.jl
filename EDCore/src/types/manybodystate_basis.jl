@@ -188,6 +188,7 @@ will be occupied.
 function MBS64(bits, occ_list)
     list = sort(collect(occ_list))
     @assert allunique(list)
+    # make_mask64() asserts the occ bits are between 1 and 64
     MBS64{bits}(make_mask64(list))
 end
 MBS64(bits, occ_list, mask) = MBS64(bits, mask[occ_list])
