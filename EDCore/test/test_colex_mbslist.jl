@@ -56,8 +56,8 @@ end
     @test mbs_list_mask == expected_mbs_mask
 
     # Test edge case t=0 with mask
-    c_mask_t0 = ColexMBS64Mask(3, 0, mask)
-    @test collect(c_mask_t0) == [MBS64(3, Int64[])]
+    c_mask_t0 = ColexMBS64Mask(5, 0, mask)
+    @test collect(c_mask_t0) == [MBS64(5, Int64[])]
     @test length(collect(c_mask_t0)) == binomial(length(mask), 0)
 
     # Test edge case t=length(mask)
