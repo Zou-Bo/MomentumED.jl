@@ -318,7 +318,7 @@ module Analysis
 
     include("analysis/particle_reduced_density_matrix.jl")
     include("analysis/orbital_reduced_density_matrix.jl")
-    include("analysis/manybody_connection.jl")
+    include("analysis/manybody_quantum_geometry.jl")
 end
 
 using .Preparation

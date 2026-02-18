@@ -101,10 +101,8 @@ The sign of the number in `N_each_component` determines whether particles or hol
 
 # Keywords
 The `mask` argument, if provided, restricts the set of orbitals that can be occupied (for positive `N`) or made into holes (for negative `N`) for the single-component states.
-`mask` is a Vector{Int64} and must be sorted.
+`mask` is a Vector{Int64} and treated as sorted.
 
-`check_mask_sorted::Bool=false` will assert `mask` is sorted if it's provided. 
-It will only check once at the begining of outermost iteration.
 """
 function mbslist_recursive_iteration!(subspace_lists::Vector{Vector{MBS64{bits}}}, 
     subspace_k1::Vector{Int64}, subspace_k2::Vector{Int64}, 
@@ -112,13 +110,8 @@ function mbslist_recursive_iteration!(subspace_lists::Vector{Vector{MBS64{bits}}
     accumulated_mbs::MBS64 = reinterpret(MBS64{0}, 0), 
     accumulated_momentum::Tuple{Int64, Int64} = (0, 0), start_end::Int64...; 
     mask::Union{Nothing, Vector{Int64}} = nothing,
-    check_mask_sorted::Bool = false,
     selection_rule::Function = Returns(true),
 ) where {bits}
-
-    if check_mask_sorted && !isnothing(mask)
-        @assert issorted(mask)
-    end
 
     if !isempty(N_each_component) 
         PRINT_RECURSIVE_MOMENTUM_DIVISION && println("Enter loop with $N_each_component. 

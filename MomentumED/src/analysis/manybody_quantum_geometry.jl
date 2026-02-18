@@ -186,3 +186,50 @@ function ED_connection_step(ψ_f::Vector{MbsVec}, ψ_i::Vector{MbsVec},
     return mbc
 end
 
+
+
+function ED_step_inner_prod(ψ_f::MbsVec, ψ_i::MbsVec,
+    orbital_inner_prod::Vector{Complex{F}}
+    )::Complex{F} where {bits, F <: AbstractFloat, 
+    MbsVec <: MBS64Vector{bits, F}}
+
+    @assert ψ_f.space == ψ_i.space "The Hilbert subspaces of eigenvectors must match."
+    @assert length(orbital_inner_prod) == bits "orbital inner product length should be $bits."
+
+    inner_prod = zero(Complex{F})  # many-body connection step integral
+    for x in eachindex(ψ_f.vec)
+        coeffi::Complex{F} = ψ_f.vec[x]' * ψ_i.vec[x]
+        product::Complex{F} = prod(
+            orbital_inner_prod[occ_list(ψ_f.space.list[x])];
+            init = one(Complex{F})
+        )
+        inner_prod += coeffi * product
+    end
+    return inner_prod
+end
+function ED_step_inner_prod(ψ_f::Vector{MbsVec}, ψ_i::Vector{MbsVec},
+    orbital_inner_prod::Vector{Complex{F}}
+    )::Matrix{Complex{F}} where {bits, F <: AbstractFloat, 
+    MbsVec <: MBS64Vector{bits, F}}
+
+    @assert all(==(ψ_f[1].space).(getfield.(ψ_f, :space))) "The Hilbert subspaces of eigenvectors must match."
+    @assert all(==(ψ_f[1].space).(getfield.(ψ_i, :space))) "The Hilbert subspaces of eigenvectors must match."
+    @assert length(ψ_f) == length(ψ_i) "Number of eigenvectors must match in non-Abelian connection"
+    @assert length(orbital_inner_prod) == bits "orbital inner product length should be $bits."
+
+    g = length(ψ_f)  # degeneracy
+    inner_prod_matrix = zeros(Complex{F}, g, g)  # many-body connection step integral
+    coeffi = similar(inner_prod_matrix)
+    for x in eachindex(ψ_f[1].vec)
+        psi_i = [ψ_i[j].vec[i] for i in x:x, j in eachindex(ψ_i)]
+        psi_f = [ψ_f[j].vec[i] for i in x:x, j in eachindex(ψ_f)]
+        mul!(coeffi, psi_f', psi_i)
+        product::Complex{F} = prod(
+            orbital_inner_prod[occ_list(ψ_f[1].space.list[x])];
+            init = one(Complex{F})
+        )
+        inner_prod_matrix .+= coeffi .* product
+    end
+
+    return inner_prod_matrix
+end
