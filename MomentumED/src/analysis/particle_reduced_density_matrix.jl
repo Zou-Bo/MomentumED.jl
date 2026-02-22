@@ -55,21 +55,19 @@ function PES_MomtBlock_rdm(para::EDPara, ψ::MBS64Vector{bits, F},
     for (i, anni) in enumerate(part_subspace.list)
         for (j, crea) in enumerate(part_subspace.list)
             if i <= j
-                # println("anni: $anni \n occ_list: ", occ_list(anni))
-                # println("anni: $crea \n occ_list: ", occ_list(crea))
                 # try to apply creation/annihilation; if pass, add to rdm
                 for (x_in, mbs_in) in enumerate(ψ.space.list)
                     mbs_in_ph = flip!(mbs_in, ph_trans_mask)
                     # println("$mbs_in is flipped into $mbs_in_ph")
                     if isoccupied(mbs_in_ph, anni.n)
-                        mbs_mid_ph = empty!(mbs_in_ph, anni.n; check = false)
+                        mbs_mid_ph = empty!(mbs_in_ph, anni.n)
                         if isempty(mbs_mid_ph, crea.n)
-                            mbs_out_ph = occupy!(mbs_mid_ph, crea.n; check = false)
+                            mbs_out_ph = occupy!(mbs_mid_ph, crea.n)
                             mbs_out = flip!(mbs_out_ph, ph_trans_mask)
                             x_out = get(ψ.space, mbs_out)
                             if !iszero(x_out)
                                 # determine the sign using the states before ph-transform
-                                if iseven(scat_occ_number(mbs_in, occ_list(anni)) + scat_occ_number(mbs_out, occ_list(crea)))
+                                if iseven(scat_occ_number(mbs_in, anni.n) + scat_occ_number(mbs_out, crea.n))
                                     # println("even")
                                     rdm[i,j] += conj(ψ.vec[x_out]) * ψ.vec[x_in]
                                 else

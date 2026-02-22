@@ -51,8 +51,8 @@ function MBS_totalmomentum(k_list::Matrix{Int64}, Gk::NTuple{2, Int64}, mbs::MBS
     Nk = size(k_list, 2))::NTuple{2, Int64}
     # momentum are integers
     k1 = 0; k2 = 0
-    for i in occ_list(mbs)
-        momentum = view(k_list, 1:2, mod1(i, Nk) )
+    for_each_occ(mbs) do i
+        momentum = @view k_list[:, mod1(i, Nk)]
         k1 += momentum[1]
         k2 += momentum[2]
     end

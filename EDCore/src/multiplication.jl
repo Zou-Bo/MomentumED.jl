@@ -16,9 +16,9 @@ function *(scat::Scatter{C, MBS64{bits}}, mbs_in::MBS64{bits})::Tuple{C, MBS64{b
         if scat.in == scat.out
             return scat.Amp, mbs_in
         else
-            mbs_mid = empty!(mbs_in, scat.in.n; check = false)
+            mbs_mid = empty!(mbs_in, scat.in.n)
             if isempty(mbs_mid, scat.out.n)
-                mbs_out = occupy!(mbs_mid, scat.out.n; check = false)
+                mbs_out = occupy!(mbs_mid, scat.out.n)
                 if isodd(scat_occ_number(mbs_mid, scat.in.n) + scat_occ_number(mbs_mid, scat.out.n))
                     return -scat.Amp, mbs_out
                 else
@@ -55,9 +55,9 @@ function *(mbs_out::MBS64{bits}, scat::Scatter{C, MBS64{bits}})::Tuple{C, MBS64{
         if scat.in == scat.out
             return scat.Amp, mbs_out
         else
-            mbs_mid = empty!(mbs_out, scat.out.n; check = false)
+            mbs_mid = empty!(mbs_out, scat.out.n)
             if isempty(mbs_mid, scat.in.n)
-                mbs_in = occupy!(mbs_mid, scat.in.n; check = false)
+                mbs_in = occupy!(mbs_mid, scat.in.n)
                 if isodd(scat_occ_number(mbs_mid, scat.in.n) + scat_occ_number(mbs_mid, scat.out.n))
                     return -scat.Amp, mbs_in
                 else

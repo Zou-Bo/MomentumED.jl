@@ -1,27 +1,24 @@
 using LinearAlgebra
 
-# need update
 """
-    struct MBOperator{T <: Tuple{Vararg{Vector{<:Scatter}}}}
-        scats::T
+    struct MBOperator{C <: Complex, MBS <: MBS64}
+        scats::Vector{Scatter{C, MBS}}
         upper_hermitian::Bool
     end
 
 Represents a many-body operator as a list of lists of `Scatter` terms.
 
 # Fields
-- `scats::Tuple{Vararg{Vector{<:Scatter}}}`: A Tuple of vectors, where each inner vector contains `Scatter{N}` terms.
+- `scats::Vector{Scatter{C, MBS}}`: A vector of `Scatter` terms.
 - `upper_hermitian::Bool`: Indicates whether the operator is upper Hermitian, affecting how terms are handled.
 
-In the construction of operators, all `Scatter` terms are automatically reorganized by their body number.
-Terms of the same scatter-in and -out states are merged.
-Terms of the same body number are sorted
+In the construction of operators, all `Scatter` terms are automatically merged and sorted.
 
 # Constructor
     MBOperator(scats::Vector{<: Scatter}...; upper_hermitian::Bool)
     MBOperator(scats::Vector{Vector{<:Scatter}}; upper_hermitian::Bool)
 
-Constructs an `MBOperator` from input `Scatter` terms.
+Constructs an `MBOperator` from input lists of `Scatter` terms.
 The `upper_hermitian` flag determines how scattering terms are sorted and merged.
 """
 struct MBOperator{C <: Complex, MBS <: MBS64}

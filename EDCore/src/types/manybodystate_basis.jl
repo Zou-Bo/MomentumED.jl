@@ -134,16 +134,23 @@ function occ_list(mbs::MBS64{bits}) where {bits}
     while n > 0
         tz = trailing_zeros(n)
         push!(occupied_bits, tz+1)
-        n ⊻= UInt64(1) << tz # clear the bit
+        n &= n - UInt64(1) # clear the last bit
     end
     return occupied_bits
+end
+
+function for_each_occ(f, mbs::MBS64{bits}) where {bits}
+    n = mbs.n
+    while n > 0
+        tz = trailing_zeros(n)
+        f(tz+1)
+        n &= n - UInt64(1) # clear the last bit
+    end
 end
 
 """
     make_mask64(occ_list::Vector{Int64})::UInt64
     make_mask64(occ_list)::UInt64 = make_mask64(collect(occ_list))
-    make_mask64(occ_list::Tuple{Int64})::UInt64
-    make_mask64(occ_list::Tuple{Int64, Int64})::UInt64
 
 Create mask with ones on the assigned bit positions.
 Bit positions should be >= 1 and <= 64.
@@ -154,7 +161,7 @@ Optimized for one and two occupations.
 function make_mask64(occ_list::Vector{Int64})::UInt64
     mask = UInt64(0)
     for i in occ_list
-        @assert 1 <= i <= 64
+        @boundscheck @assert 1 <= i <= 64
         mask |= UInt64(1) << (i - 1)
     end
     return mask
@@ -165,12 +172,12 @@ end
     make_mask64(collect(occ_list))
 end
 function make_mask64(occ_list::Tuple{Int64})::UInt64
-    @assert 1 <= occ_list[1] <= 64
+    @boundscheck @assert 1 <= occ_list[1] <= 64
     return UInt64(1) << (occ_list[1] - 1)
 end
 function make_mask64(occ_list::Tuple{Int64, Int64})::UInt64
-    @assert 1 <= occ_list[1] <= 64
-    @assert 1 <= occ_list[2] <= 64
+    @boundscheck @assert 1 <= occ_list[1] <= 64
+    @boundscheck @assert 1 <= occ_list[2] <= 64
     return UInt64(1) << (occ_list[1] - 1) | UInt64(1) << (occ_list[2] - 1)
 end
 
@@ -185,13 +192,21 @@ that should be set to occupied. For example, if `mask` represents orbitals
 [1, 3, 5] and `occ_list` is [1, 2], then orbitals 1 and 3 (from the mask)
 will be occupied.
 """
+function MBS64(bits, occ_list::Vector{Int64}; 
+    sort_checknorepetition::Bool=true)
+    if sort_checknorepetition
+        occ_list = sort!(occ_list)
+        @assert allunique(occ_list) "Duplicate orbital indices when constructing MBS64."
+    end
+    MBS64{bits}(make_mask64(occ_list))
+end
 function MBS64(bits, occ_list)
     list = sort(collect(occ_list))
-    @assert allunique(list)
+    @assert allunique(list) "Duplicate orbital indices when constructing MBS64."
     # make_mask64() asserts the occ bits are between 1 and 64
     MBS64{bits}(make_mask64(list))
 end
-MBS64(bits, occ_list, mask) = MBS64(bits, mask[occ_list])
+MBS64(bits, occ_list, mask) = MBS64(bits, view(mask, occ_list))
 
 """
     MBS64_complete(mbs::MBS64{bits})::MBS64{bits}
@@ -203,15 +218,15 @@ function MBS64_complete(mbs::MBS64{bits})::MBS64{bits} where {bits}
 end
 
 """
-    isoccupied(mbs::MBS64{bits}, i_list::UInt64) where {bits}
+    isoccupied(mbs::MBS64{bits}, i_mask::UInt64) where {bits}
     isoccupied(mbs::MBS64{bits}, i_list::Vector{Int64}) where {bits}
     isoccupied(mbs::MBS64{bits}, i_list::Tuple{Vararg{Int64}}) where {bits}
 
 Check if the specified orbital(s) are all occupied in the many-body state.
 Returns true if all specified orbitals are occupied.
 """
-function isoccupied(mbs::MBS64{bits}, i_list::UInt64) where {bits}
-    return mbs.n & i_list == i_list
+function isoccupied(mbs::MBS64{bits}, i_mask::UInt64) where {bits}
+    return mbs.n & i_mask == i_mask
 end
 function isoccupied(mbs::MBS64{bits}, i_list::Vector{Int64}) where {bits}
     mask = make_mask64(i_list)
@@ -221,25 +236,25 @@ function isoccupied(mbs::MBS64{bits}, i_list::Tuple{Vararg{Int64}}) where {bits}
     mask = make_mask64(i_list)
     return mbs.n & mask == mask
 end
-function isoccupied(mbs::MBS64{bits}, i_list::Tuple{Int64}) where {bits}
-    mask = make_mask64(i_list)
-    return mbs.n & mask == mask
-end
-function isoccupied(mbs::MBS64{bits}, i_list::Tuple{Int64, Int64}) where {bits}
-    mask = make_mask64(i_list)
-    return mbs.n & mask == mask
-end
+# function isoccupied(mbs::MBS64{bits}, i_list::Tuple{Int64}) where {bits}
+#     mask = make_mask64(i_list)
+#     return mbs.n & mask == mask
+# end
+# function isoccupied(mbs::MBS64{bits}, i_list::Tuple{Int64, Int64}) where {bits}
+#     mask = make_mask64(i_list)
+#     return mbs.n & mask == mask
+# end
 
 """
-    isempty(mbs::MBS64{bits}, i_list::UInt64) where {bits}
+    isempty(mbs::MBS64{bits}, i_mask::UInt64) where {bits}
     isempty(mbs::MBS64{bits}, i_list::Vector{Int64}) where {bits}
     isempty(mbs::MBS64{bits}, i_list::Tuple{Vararg{Int64}}) where {bits}
 
 Check if the specified orbital(s) are all empty in the many-body state.
 Returns true if all specified orbitals are empty.
 """
-function Base.isempty(mbs::MBS64{bits}, i_list::UInt64) where {bits}
-    return mbs.n & i_list == 0
+function Base.isempty(mbs::MBS64{bits}, i_mask::UInt64) where {bits}
+    return mbs.n & i_mask == 0
 end
 function Base.isempty(mbs::MBS64{bits}, i_list::Vector{Int64}) where {bits}
     mask = make_mask64(i_list)
@@ -249,28 +264,26 @@ function Base.isempty(mbs::MBS64{bits}, i_list::Tuple{Vararg{Int64}}) where {bit
     mask = make_mask64(i_list)
     return mbs.n & mask == 0
 end
-function Base.isempty(mbs::MBS64{bits}, i_list::Tuple{Int64}) where {bits}
-    mask = make_mask64(i_list)
-    return mbs.n & mask == 0
-end
-function Base.isempty(mbs::MBS64{bits}, i_list::Tuple{Int64, Int64}) where {bits}
-    mask = make_mask64(i_list)
-    return mbs.n & mask == 0
-end
+# function Base.isempty(mbs::MBS64{bits}, i_list::Tuple{Int64}) where {bits}
+#     mask = make_mask64(i_list)
+#     return mbs.n & mask == 0
+# end
+# function Base.isempty(mbs::MBS64{bits}, i_list::Tuple{Int64, Int64}) where {bits}
+#     mask = make_mask64(i_list)
+#     return mbs.n & mask == 0
+# end
 
 """
-    occupy!(mbs::MBS64{bits}, i_list::UInt64; check::Bool=true) where {bits}
+    occupy!(mbs::MBS64{bits}, i_mask::UInt64) where {bits}
     occupy!(mbs::MBS64{bits}, i_list::Vector{Int64}; check::Bool=true) where {bits}
     occupy!(mbs::MBS64{bits}, i_list::Tuple{Vararg{Int64}}; check::Bool=true) where {bits}
 
 Create a new MBS64 with the specified orbital(s) occupied.
 If check=true, verifies that the orbitals were originally empty.
+The mask version has no occupation and bit boundary check.
 """
-function occupy!(mbs::MBS64{bits}, i_list::UInt64; check::Bool=true) where {bits}
-    if check
-        @assert mbs.n & i_list == 0 "Some orbitals are already occupied."
-    end
-    return MBS64{bits}(mbs.n | i_list)
+function occupy!(mbs::MBS64{bits}, i_mask::UInt64) where {bits}
+    return reinterpret(MBS64{bits}, mbs.n | i_mask)
 end
 function occupy!(mbs::MBS64{bits}, i_list::Vector{Int64}; check::Bool=true) where {bits}
     mask = make_mask64(i_list)
@@ -286,34 +299,32 @@ function occupy!(mbs::MBS64{bits}, i_list::Tuple{Vararg{Int64}}; check::Bool=tru
     end
     return MBS64{bits}(mbs.n | mask)
 end
-function occupy!(mbs::MBS64{bits}, i_list::Tuple{Int64}; check::Bool=true) where {bits}
-    mask = make_mask64(i_list)
-    if check
-        @assert mbs.n & mask == 0 "Some orbitals are already occupied."
-    end
-    return MBS64{bits}(mbs.n | mask)
-end
-function occupy!(mbs::MBS64{bits}, i_list::Tuple{Int64, Int64}; check::Bool=true) where {bits}
-    mask = make_mask64(i_list)
-    if check
-        @assert mbs.n & mask == 0 "Some orbitals are already occupied."
-    end
-    return MBS64{bits}(mbs.n | mask)
-end
+# function occupy!(mbs::MBS64{bits}, i_list::Tuple{Int64}; check::Bool=true) where {bits}
+#     mask = make_mask64(i_list)
+#     if check
+#         @assert mbs.n & mask == 0 "Some orbitals are already occupied."
+#     end
+#     return MBS64{bits}(mbs.n | mask)
+# end
+# function occupy!(mbs::MBS64{bits}, i_list::Tuple{Int64, Int64}; check::Bool=true) where {bits}
+#     mask = make_mask64(i_list)
+#     if check
+#         @assert mbs.n & mask == 0 "Some orbitals are already occupied."
+#     end
+#     return MBS64{bits}(mbs.n | mask)
+# end
 
 """
-    empty!(mbs::MBS64{bits}, i_list::UInt64; check::Bool=true) where {bits}
+    empty!(mbs::MBS64{bits}, i_mask::UInt64) where {bits}
     empty!(mbs::MBS64{bits}, i_list::Vector{Int64}; check::Bool=true) where {bits}
     empty!(mbs::MBS64{bits}, i_list::Tuple{Vararg{Int64}}; check::Bool=true) where {bits}
 
 Create a new MBS64 with the specified orbital(s) emptied.
 If check=true, verifies that the orbitals were originally occupied.
+The mask version has no occupation and bit boundary check.
 """
-function Base.empty!(mbs::MBS64{bits}, i_list::UInt64; check::Bool=true) where {bits}
-    if check
-        @assert mbs.n & i_list == i_list "Some orbitals are already empty."
-    end
-    return MBS64{bits}(mbs.n & ~i_list)
+function Base.empty!(mbs::MBS64{bits}, i_mask::UInt64) where {bits}
+    return reinterpret(MBS64{bits}, mbs.n & ~i_mask)
 end
 function Base.empty!(mbs::MBS64{bits}, i_list::Vector{Int64}; check::Bool=true) where {bits}
     mask = make_mask64(i_list)
@@ -329,30 +340,30 @@ function Base.empty!(mbs::MBS64{bits}, i_list::Tuple{Vararg{Int64}}; check::Bool
     end
     return MBS64{bits}(mbs.n & ~mask)
 end
-function Base.empty!(mbs::MBS64{bits}, i_list::Tuple{Int64}; check::Bool=true) where {bits}
-    mask = make_mask64(i_list)
-    if check
-        @assert mbs.n & mask == mask "Some orbitals are already empty."
-    end
-    return MBS64{bits}(mbs.n & ~mask)
-end
-function Base.empty!(mbs::MBS64{bits}, i_list::Tuple{Int64, Int64}; check::Bool=true) where {bits}
-    mask = make_mask64(i_list)
-    if check
-        @assert mbs.n & mask == mask "Some orbitals are already empty."
-    end
-    return MBS64{bits}(mbs.n & ~mask)
-end
+# function Base.empty!(mbs::MBS64{bits}, i_list::Tuple{Int64}; check::Bool=true) where {bits}
+#     mask = make_mask64(i_list)
+#     if check
+#         @assert mbs.n & mask == mask "Some orbitals are already empty."
+#     end
+#     return MBS64{bits}(mbs.n & ~mask)
+# end
+# function Base.empty!(mbs::MBS64{bits}, i_list::Tuple{Int64, Int64}; check::Bool=true) where {bits}
+#     mask = make_mask64(i_list)
+#     if check
+#         @assert mbs.n & mask == mask "Some orbitals are already empty."
+#     end
+#     return MBS64{bits}(mbs.n & ~mask)
+# end
 
 """
-    flip!(mbs::MBS64{bits}, i_list::UInt64) where {bits}
+    flip!(mbs::MBS64{bits}, i_mask::UInt64) where {bits}
     flip!(mbs::MBS64{bits}, i_list::Vector{Int64}) where {bits}
     flip!(mbs::MBS64{bits}, i_list::Tuple{Vararg{Int64}}) where {bits}
 
 Create a new MBS64 with flipped occupations in the specified orbital(s).
 """
-function flip!(mbs::MBS64{bits}, i_list::UInt64) where {bits}
-    return MBS64{bits}(mbs.n ⊻ i_list)
+function flip!(mbs::MBS64{bits}, i_mask::UInt64) where {bits}
+    return reinterpret(MBS64{bits}, mbs.n ⊻ i_mask)
 end
 function flip!(mbs::MBS64{bits}, i_list::Vector{Int64}) where {bits}
     mask = make_mask64(i_list)
@@ -362,20 +373,20 @@ function flip!(mbs::MBS64{bits}, i_list::Tuple{Vararg{Int64}}) where {bits}
     mask = make_mask64(i_list)
     return MBS64{bits}(mbs.n ⊻ mask)
 end
-function flip!(mbs::MBS64{bits}, i_list::Tuple{Int64}) where {bits}
-    mask = make_mask64(i_list)
-    return MBS64{bits}(mbs.n ⊻ mask)
-end
-function flip!(mbs::MBS64{bits}, i_list::Tuple{Int64, Int64}) where {bits}
-    mask = make_mask64(i_list)
-    return MBS64{bits}(mbs.n ⊻ mask)
-end
+# function flip!(mbs::MBS64{bits}, i_list::Tuple{Int64}) where {bits}
+#     mask = make_mask64(i_list)
+#     return MBS64{bits}(mbs.n ⊻ mask)
+# end
+# function flip!(mbs::MBS64{bits}, i_list::Tuple{Int64, Int64}) where {bits}
+#     mask = make_mask64(i_list)
+#     return MBS64{bits}(mbs.n ⊻ mask)
+# end
 
 """
+    scat_occ_number(mbs_n::UInt64, i_mask::UInt64)::Int64
+    scat_occ_number(mbs::MBS64{bits}, i_mask::UInt64)::Int64 where {bits}
     scat_occ_number(mbs::MBS64{bits}, i_list::Vector{Int64})::Int64 where {bits}
     scat_occ_number(mbs::MBS64{bits}, i_list::Tuple{Vararg{Int64}})::Int64 where {bits}
-    scat_occ_number(mbs::MBS64{bits}, i_list::Tuple{Int64})::Int64 where {bits}
-    scat_occ_number(mbs::MBS64{bits}, i_list::Tuple{Int64, Int64})::Int64 where {bits}
 
 Count the total number of occupied orbitals that contribute to the sign flip when applying a series of creation/annihilation operators.
 When a Scatter{N} object is applied, the number of sign flips should be the sum of 
@@ -383,6 +394,21 @@ applying the creation i_list and annihilation i_list on the middle state.
 
 Optimized for one-body and two-body Scatter with Tuple input.
 """
+function scat_occ_number(mbs_n::UInt64, i_mask::UInt64)::Int64
+    mask = zero(UInt64)
+    while i_mask > 0
+        tz1 = trailing_zeros(i_mask)
+        i_mask &= i_mask - UInt64(1) # clear the last bit
+        tz2 = trailing_zeros(i_mask)
+        i_mask &= i_mask - UInt64(1) # clear the last bit
+        mask += UInt64(1) << tz2
+        mask -= UInt64(1) << (tz1 + 1)
+    end
+    return count_ones(mbs_n & mask)
+end
+@inline function scat_occ_number(mbs::MBS64, i_mask)::Int64
+    scat_occ_number(mbs.n, i_mask)
+end
 function scat_occ_number(mbs::MBS64{bits}, i_list::Vector{Int64})::Int64 where {bits}
 
     i_list = sort(i_list) # sort from small to large
@@ -402,18 +428,6 @@ function scat_occ_number(mbs::MBS64{bits}, i_list::Vector{Int64})::Int64 where {
         for i in i_list[x]+1:i_list[x+1]-1
             mask |= UInt64(1) << (i - 1)
         end
-    end
-    return count_ones(mbs.n & mask)
-end
-function scat_occ_number(mbs::MBS64{bits}, i_mask::UInt64)::Int64 where {bits}
-    mask = zero(UInt64)
-    while i_mask > 0
-        tz1 = trailing_zeros(i_mask)
-        i_mask ⊻= UInt64(1) << tz1 # clear the bit
-        tz2 = trailing_zeros(i_mask)
-        i_mask ⊻= UInt64(1) << tz2 # clear the bit
-        mask += UInt64(1) << tz2
-        mask -= UInt64(1) << (tz1 + 1)
     end
     return count_ones(mbs.n & mask)
 end

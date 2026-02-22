@@ -34,6 +34,7 @@ export OES_NumMomtBlocks, OES_NumMomtBlock_coef
 
 # analysis - many-body connection
 export ED_connection_step, ED_connection_gaugefixing!
+export ED_step_inner_prod
 
 # environment variables
 public PRINT_RECURSIVE_MOMENTUM_DIVISION
@@ -76,6 +77,7 @@ export OES_NumMomtBlocks, OES_NumMomtBlock_coef
 
 # analysis - many-body connection
 export ED_connection_step, ED_connection_gaugefixing!
+export ED_step_inner_prod
 
 # environment variables
 public PRINT_RECURSIVE_MOMENTUM_DIVISION
@@ -312,6 +314,7 @@ module Analysis
     export PES_1rdm, PES_MomtBlocks, PES_MomtBlock_rdm
     export OES_NumMomtBlocks, OES_NumMomtBlock_coef
     export ED_connection_step, ED_connection_gaugefixing!
+    export ED_step_inner_prod
 
     using EDCore
     using ..Preparation
