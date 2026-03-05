@@ -193,7 +193,7 @@ function ED_step_inner_prod(ψ_f::MbsVec, ψ_i::MbsVec,
     )::Complex{F} where {bits, F <: AbstractFloat, 
     MbsVec <: MBS64Vector{bits, F}}
 
-    @assert ψ_f.space == ψ_i.space "The Hilbert subspaces of eigenvectors must match."
+    @assert ψ_f.space == ψ_i.space || ψ_f.space.list == ψ_i.space.list "The Hilbert subspaces of eigenvectors must match."
     @assert length(orbital_inner_prod) == bits "orbital inner product length should be $bits."
 
     inner_prod = zero(Complex{F})  # many-body connection step integral
@@ -213,7 +213,8 @@ function ED_step_inner_prod(ψ_f::Vector{MbsVec}, ψ_i::Vector{MbsVec},
     MbsVec <: MBS64Vector{bits, F}}
 
     @assert all(==(ψ_f[1].space).(getfield.(ψ_f, :space))) "The Hilbert subspaces of eigenvectors must match."
-    @assert all(==(ψ_f[1].space).(getfield.(ψ_i, :space))) "The Hilbert subspaces of eigenvectors must match."
+    @assert all(==(ψ_i[1].space).(getfield.(ψ_i, :space))) "The Hilbert subspaces of eigenvectors must match."
+    @assert ψ_f[1].space == ψ_i[1].space || ψ_f[1].space.list == ψ_i[1].space.list "The Hilbert subspaces of eigenvectors must match."
     @assert length(ψ_f) == length(ψ_i) "Number of eigenvectors must match in non-Abelian connection"
     @assert length(orbital_inner_prod) == bits "orbital inner product length should be $bits."
 
