@@ -110,7 +110,7 @@ function mbslist_recursive_iteration!(subspace_lists::Vector{Vector{MBS64{bits}}
     accumulated_mbs::MBS64 = reinterpret(MBS64{0}, 0), 
     accumulated_momentum::Tuple{Int64, Int64} = (0, 0), start_end::Int64...; 
     mask::Union{Nothing, Vector{Int64}} = nothing,
-    selection_rule::Function = Returns(true),
+    selection_rule::Function,
 ) where {bits}
 
     if !isempty(N_each_component) 
@@ -198,7 +198,8 @@ function ED_momentum_subspaces(para::EDPara, N_each_component;
     dict::Bool = false, index_type::Type = Int64,  momentum_restriction::Bool = false, 
     k1range::Tuple{Int64, Int64} = (-2,2), k2range::Tuple{Int64, Int64} = (-2,2),
     momentum_list::Vector{Tuple{Int64, Int64}} = Tuple{Int64, Int64}[],
-    mask::Union{Nothing, Vector{Int64}} = nothing
+    mask::Union{Nothing, Vector{Int64}} = nothing,
+    selection_rule::Function = Returns(true)
     )::Tuple{Vector{HilbertSubspace}, Vector{Int64}, Vector{Int64}}
 
     @assert length(N_each_component) == para.Nc_conserve "The length of number_list must be equal to the number of conserved components $(para.Nc_conserve)"
@@ -258,6 +259,7 @@ function ED_momentum_subspaces(para::EDPara, N_each_component;
     n_chunks = n_outercomponent < 2n_threads ? 1 : n_threads
     if !isnothing(mask)
         n_chunks = 1
+        sort!(mask)
     end
     chunk_size, chunk_res = divrem(n_outercomponent, n_chunks)
     chunk_ends = [t * chunk_size + min(chunk_res, t) for t in 1:n_chunks]
@@ -271,7 +273,7 @@ function ED_momentum_subspaces(para::EDPara, N_each_component;
             reinterpret(MBS64{0}, 0),              # accumulated_mbs
             (0, 0),                                # accumulated_momentum
             chunk_starts[t], chunk_ends[t];        # give the chunk start and end only for the outermost iteration
-            mask = isnothing(mask) ? nothing : sort!(mask),
+            mask, selection_rule
         )
     end
     # combine chunks

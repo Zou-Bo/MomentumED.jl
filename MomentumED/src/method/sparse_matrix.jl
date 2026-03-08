@@ -229,7 +229,7 @@ SparseHmltMatrix = ED_HamiltonianMatrix_threaded_CSCdirect
 
 """
     krylov_matrix_solve(H::SparseMatrixCSC{ComplexF64, Int64}, N_eigen::Int64=6; 
-        ishermitian::Bool=false, krylovkit_kwargs...) -> (vals, vecs)
+        ishermitian::Bool=true, vec0=nothing, krylovkit_kwargs...) -> (vals, vecs)
 
 Solve the sparse Hamiltonian matrix using KrylovKit's eigsolve function for the lowest `N_eigen` eigenvalues and eigenvectors, with :SR (smallest real) eigenvalue selection
 
@@ -239,6 +239,7 @@ Solve the sparse Hamiltonian matrix using KrylovKit's eigsolve function for the 
 
 # Keywords
 - `ishermitian::Bool=true`: Whether the matrix is Hermitian (default: true)
+- `vec0::Union{Nothing, Vector{Complex{eltype}}}=nothing`: Use the given input to start Krylov-Schur algorithm; a randon vector is generated if no input
 - `krylovkit_kwargs...`: Additional keyword arguments to pass to KrylovKit.eigsolve
 
 # Returns
@@ -255,10 +256,12 @@ println("Ground state energy: ", vals[1])
 """
 function krylov_matrix_solve(
     H::Union{Hermitian{Complex{eltype}, SparseMatrixCSC{Complex{eltype}}}, SparseMatrixCSC{Complex{eltype}}}, 
-    N_eigen::Int64; ishermitian::Bool = true, krylovkit_kwargs...
+    N_eigen::Int64; ishermitian::Bool = true, vec0::Union{Nothing, Vector{Complex{eltype}}}=nothing, krylovkit_kwargs...
 )::Tuple{Vector{eltype}, Vector{Vector{Complex{eltype}}}, Any} where {eltype<:AbstractFloat}
 
-    vec0 = rand(Complex{eltype}, H.m)
+    if isnothing(vec0)
+        vec0 = rand(Complex{eltype}, H.m)
+    end
     N_eigen = min(N_eigen, H.m)
     eigsolve(H, vec0, N_eigen, :SR; ishermitian, krylovkit_kwargs...)
 end

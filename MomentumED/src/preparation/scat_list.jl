@@ -138,8 +138,8 @@ This internal function uses an interaction function `V_int` that accepts momentu
 - Includes both direct (`V(f1,f2,i2,i1)`) and exchange (`V(f1,f2,i1,i2)`) contributions.
 """
 function scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para::EDPara;
-    MBS_type::Type{<:MBS64} = MBS64{para.Nc*para.Nk}, element_type::Type{F} = Float64,
-    shifts::Matrix{T})::Vector{Scatter{Complex{F}, MBS_type}} where {T <: Real, F <: AbstractFloat}
+    MBS_type::Type{<:MBS64} = MBS64{para.Nc*para.Nk}, element_type::Type{F},
+    shifts::Matrix{T}, V_int, int_kwargs... )::Vector{Scatter{Complex{F}, MBS_type}} where {T <: Real, F <: AbstractFloat}
     
     # @assert size(shifts) == (2, para.Nc_conserve)
 
@@ -214,22 +214,22 @@ function scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para
 
                 # Calculate the direct and exchange amplitudes
                 PRINT_TWOBODY_SCATTER_PAIRS && print(fldmod1(i1, Nk), fldmod1(i2, Nk), fldmod1(f1, Nk), fldmod1(f2, Nk),"        ")
-                amp_direct = para.V_int(
+                amp_direct = V_int(
                     (klist[1, kf1] + kshift[1, ccf1], klist[2, kf1] + kshift[2, ccf1]),
                     (klist[1, kf2] + kshift[1, ccf2], klist[2, kf2] + kshift[2, ccf2]),
                     (klist[1, ki2] + kshift[1, cci2], klist[2, ki2] + kshift[2, cci2]),
                     (klist[1, ki1] + kshift[1, cci1], klist[2, ki1] + kshift[2, cci1]),
-                    cf1, cf2, ci2, ci1
+                    cf1, cf2, ci2, ci1; int_kwargs...
                 ) |> Complex{F}
 
                 # exchange i1 and i2
                 PRINT_TWOBODY_SCATTER_PAIRS && print(fldmod1(i2, Nk), fldmod1(i1, Nk), fldmod1(f1, Nk), fldmod1(f2, Nk))
-                amp_exchange = para.V_int(
+                amp_exchange = V_int(
                     (klist[1, kf1] + kshift[1, ccf1], klist[2, kf1] + kshift[2, ccf1]),
                     (klist[1, kf2] + kshift[1, ccf2], klist[2, kf2] + kshift[2, ccf2]),
                     (klist[1, ki1] + kshift[1, cci1], klist[2, ki1] + kshift[2, cci1]),
                     (klist[1, ki2] + kshift[1, cci2], klist[2, ki2] + kshift[2, cci2]),
-                    cf1, cf2, ci1, ci2
+                    cf1, cf2, ci1, ci2; int_kwargs...
                 ) |> Complex{F}
 
                 amp = (amp_direct - amp_exchange) / sys_size
@@ -265,8 +265,8 @@ This internal function uses an interaction function `V_int` that accepts momentu
 - Applies normal ordering and calculates direct and exchange amplitudes.
 """
 function scat_pair_group_index(pair_group::Vector{Tuple{Int64,Int64}}, para::EDPara;
-    MBS_type::Type{<:MBS64} = MBS64{para.Nc*para.Nk}, element_type::Type{F} = Float64
-    )::Vector{Scatter{Complex{F}, MBS_type}} where{F <: AbstractFloat}
+    MBS_type::Type{<:MBS64} = MBS64{para.Nc*para.Nk}, element_type::Type{F},
+    V_int, int_kwargs... )::Vector{Scatter{Complex{F}, MBS_type}} where{F <: AbstractFloat}
     
     Nc = para.Nc
     Nk = para.Nk
@@ -306,16 +306,16 @@ function scat_pair_group_index(pair_group::Vector{Tuple{Int64,Int64}}, para::EDP
 
                 # Calculate the direct and exchange amplitudes
                 PRINT_TWOBODY_SCATTER_PAIRS && print(fldmod1(i1, Nk), fldmod1(i2, Nk), fldmod1(f1, Nk), fldmod1(f2, Nk),"        ")
-                amp_direct = para.V_int(
+                amp_direct = V_int(
                     kf1, kf2, ki2, ki1,
-                    cf1, cf2, ci2, ci1
+                    cf1, cf2, ci2, ci1; int_kwargs...
                 ) |> Complex{F}
 
                 # exchange i1 and i2
                 PRINT_TWOBODY_SCATTER_PAIRS && print(fldmod1(i2, Nk), fldmod1(i1, Nk), fldmod1(f1, Nk), fldmod1(f2, Nk))
-                amp_exchange = para.V_int(
+                amp_exchange = V_int(
                     kf1, kf2, ki1, ki2,
-                    cf1, cf2, ci1, ci2
+                    cf1, cf2, ci1, ci2; int_kwargs...
                 ) |> Complex{F}
 
                 amp = (amp_direct - amp_exchange) / sys_size
@@ -367,12 +367,18 @@ Scatter2_shifted = ED_sortedScatterList_twobody(para; kshift=(0.1, 0.1))
 """
 function ED_sortedScatterList_twobody(para::EDPara; MBS_type::Type{<:MBS64} = MBS64{para.Nc*para.Nk},
     momentum_transformation::Union{Nothing, Function} = nothing, element_type::Type{F} = Float64,
-    kshift = nothing)::Vector{Scatter{Complex{F}, MBS_type}} where{F <: AbstractFloat}
+    replace_interaction::Union{Nothing, Function} = nothing, 
+    rep_int_use_momentum_coordinate::Bool = para.momentum_coordinate,
+    kshift = nothing, int_kwargs... )::Vector{Scatter{Complex{F}, MBS_type}} where{F <: AbstractFloat}
+
+    if isnothing(replace_interaction)
+        replace_interaction = para.V_int
+    end
 
     momentum_groups = group_momentum_pairs(para; momentum_transformation)
     
     sct_list2 = Vector{Scatter{Complex{F}, MBS_type}}()
-    if para.momentum_coordinate
+    if rep_int_use_momentum_coordinate
 
         if isnothing(kshift)
             shifts = zeros(Int64, 2, para.Nc_conserve)
@@ -394,7 +400,7 @@ function ED_sortedScatterList_twobody(para::EDPara; MBS_type::Type{<:MBS64} = MB
         end
 
         for (K_total, pairs) in momentum_groups
-            append!(sct_list2, scat_pair_group_coordinate(pairs, para; shifts=shifts))
+            append!(sct_list2, scat_pair_group_coordinate(pairs, para; shifts, element_type, V_int = replace_interaction, int_kwargs...))
         end
     else
         if !isnothing(kshift)
@@ -402,7 +408,7 @@ function ED_sortedScatterList_twobody(para::EDPara; MBS_type::Type{<:MBS64} = MB
         end
 
         for (K_total, pairs) in momentum_groups
-            append!(sct_list2, scat_pair_group_index(pairs, para))
+            append!(sct_list2, scat_pair_group_index(pairs, para; element_type, V_int = replace_interaction, int_kwargs...))
         end
     end
 

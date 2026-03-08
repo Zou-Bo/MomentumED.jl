@@ -136,7 +136,7 @@ end
 
 """
     krylov_map_solve(H::SparseMatrixCSC{ComplexF64, Int64}, N_eigen::Int64=6; 
-        converge_warning::Bool=false, krylovkit_kwargs...) -> (vals, vecs)
+        ishermitian::Bool=true, vec0 = nothing, krylovkit_kwargs...) -> (vals, vecs)
 
 Solve the sparse Hamiltonian matrix using KrylovKit's eigsolve function for the lowest `N_eigen` eigenvalues and eigenvectors.
 
@@ -145,8 +145,8 @@ Solve the sparse Hamiltonian matrix using KrylovKit's eigsolve function for the 
 - `N_eigen::Int64=6`: Number of eigenvalues/eigenvectors to compute (default: 6)
 
 # Keywords
-- `vec0::Vector{Complex{eltype}}=rand(Complex{eltype}, H.m)`: Initial guess vector for Krylov iteration
 - `ishermitian::Bool=true`: Whether the matrix is Hermitian (default: true)
+- `vec0::Union{Nothing, Vector{Complex{eltype}}}=nothing`: Use the given input to start Krylov-Schur algorithm; a randon vector is generated if no input
 - `krylovkit_kwargs...`: Additional keyword arguments to pass to KrylovKit.eigsolve
 
 # Returns
@@ -170,11 +170,15 @@ println("Ground state energy: ", vals[1])
 """
 function krylov_map_solve(
     H::AbstractLinearMap{bits, eltype}, N_eigen::Int64;
-    ishermitian::Bool = true, krylovkit_kwargs...
+    ishermitian::Bool = true, 
+    vec0::Union{Nothing, Vector{Complex{eltype}}} = nothing, 
+    krylovkit_kwargs...
 )::Tuple{Vector{eltype}, Vector{Vector{Complex{eltype}}}, Any} where {bits, eltype<:AbstractFloat}
 
     m = length(H.space)
-    vec0 = rand(Complex{eltype}, m)
+    if isnothing(vec0)
+        vec0 = rand(Complex{eltype}, m)
+    end
     N_eigen = min(N_eigen, m)
     eigsolve(H, vec0, N_eigen, :SR; ishermitian, krylovkit_kwargs...)
 end
