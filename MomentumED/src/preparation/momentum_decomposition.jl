@@ -255,7 +255,7 @@ function ED_momentum_subspaces(para::EDPara, N_each_component;
     bits = para.Nk * para.Nc
     # to generate approximated chunk division
     n_threads = Threads.nthreads()
-    n_outercomponent = binomial(para.Nk * para.Nc_hopping, N_each_component[end])
+    n_outercomponent = binomial(para.Nk * para.Nc_hopping, abs(N_each_component[end]))
     n_chunks = n_outercomponent < 2n_threads ? 1 : n_threads
     if !isnothing(mask)
         n_chunks = 1
