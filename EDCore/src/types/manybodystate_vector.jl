@@ -28,7 +28,7 @@ struct MBS64Vector{bits, F <: AbstractFloat}
     end
 end
 
-import Base: show, length, size, similar, getindex
+import Base: show, length, size, similar, getindex, +, -
 import LinearAlgebra: dot
 # """
 #     Base.getindex(mbs_vec::MBS64Vector{bits, F}, mbs::MBS64{bits}) where {bits, F <: AbstractFloat}
@@ -88,6 +88,8 @@ end
 #     return mbs_to
 # end
 
+
+
 """
     dot(mbs_bra::MBS64Vector{bits, F}, mbs_ket::MBS64Vector{bits, F})::Complex{F}
     mbs_bra ⋅ mbs_ket
@@ -98,4 +100,18 @@ Both vectors must belong to the same Hilbert subspace.
 function dot(mbs_bra::MBS64Vector{bits, F}, mbs_ket::MBS64Vector{bits, F})::Complex{F} where {bits, F <: AbstractFloat}
     @boundscheck @assert mbs_bra.space == mbs_ket.space "mbs vectors are not in the same subspace."
     return dot(mbs_bra.vec, mbs_ket.vec)
+end
+
+function +(v1::MBS64Vector{bits, F}, v2::MBS64Vector{bits, F})::MBS64Vector{bits, F} where{bits, F<: AbstractFloat}
+    @boundscheck @assert v1.space == v2.space "mbs vectors are not in the same subspace."
+    v = similar(v1)
+    v.vec .= v1.vec .+ v2.vec
+    return v
+end
+
+function -(v1::MBS64Vector{bits, F}, v2::MBS64Vector{bits, F})::MBS64Vector{bits, F} where{bits, F<: AbstractFloat}
+    @boundscheck @assert v1.space == v2.space "mbs vectors are not in the same subspace."
+    v = similar(v1)
+    v.vec .= v1.vec .- v2.vec
+    return v
 end

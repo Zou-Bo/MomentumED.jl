@@ -148,13 +148,18 @@ function ED_connection_step(ψ_f::Vector{MbsVec}, ψ_i::Vector{MbsVec},
     
 
     inner_prod_matrix = zeros(ComplexF64, g, g)  # many-body connection step integral
+    # reuse temporary matrices/vectors avoid repeated allocations
     coeffi = similar(inner_prod_matrix)
+    psi_i = Vector{ComplexF64}(undef, g)
+    psi_f = Vector{ComplexF64}(undef, g)
     for x in eachindex(ψ_f[1].vec)
-        psi_i = [ψ_i[j].vec[i] for i in x:x, j in eachindex(ψ_i)]
-        psi_f = [ψ_f[j].vec[i] for i in x:x, j in eachindex(ψ_f)]
+        for j in eachindex(psi_i, psi_f)
+            psi_i[j] = ψ_i[j].vec[x]
+            psi_f[j] = conj(ψ_f[j].vec[x])
+        end
         if norm(psi_i) > wavefunction_tol && norm(psi_f) > wavefunction_tol
 
-            coeffi .= psi_f' * psi_i
+            mul!(coeffi, psi_f, transpose(psi_i))
 
             bc = sum(occ_list(ψ_f[1].space.list[x]) ) do i
                 c, k = fldmod1(i, para.Nk)
@@ -209,8 +214,7 @@ function ED_step_inner_prod(ψ_f::MbsVec, ψ_i::MbsVec,
 end
 function ED_step_inner_prod(ψ_f::Vector{MbsVec}, ψ_i::Vector{MbsVec},
     orbital_inner_prod::Vector{Complex{F}}
-    )::Matrix{Complex{F}} where {bits, F <: AbstractFloat, 
-    MbsVec <: MBS64Vector{bits, F}}
+    )::Matrix{Complex{F}} where {bits, F <: AbstractFloat, MbsVec <: MBS64Vector{bits, F}}
 
     @assert all(==(ψ_f[1].space).(getfield.(ψ_f, :space))) "The Hilbert subspaces of eigenvectors must match."
     @assert all(==(ψ_i[1].space).(getfield.(ψ_i, :space))) "The Hilbert subspaces of eigenvectors must match."
@@ -219,12 +223,17 @@ function ED_step_inner_prod(ψ_f::Vector{MbsVec}, ψ_i::Vector{MbsVec},
     @assert length(orbital_inner_prod) == bits "orbital inner product length should be $bits."
 
     g = length(ψ_f)  # degeneracy
-    inner_prod_matrix = zeros(Complex{F}, g, g)  # many-body connection step integral
+    inner_prod_matrix = zeros(Complex{F}, g, g)  # collect many-body connection step integral
+    # reuse temporary matrices/vectors avoid repeated allocations
     coeffi = similar(inner_prod_matrix)
+    psi_i = Vector{Complex{F}}(undef, g)
+    psi_f = Vector{Complex{F}}(undef, g)
     for x in eachindex(ψ_f[1].vec)
-        psi_i = [ψ_i[j].vec[i] for i in x:x, j in eachindex(ψ_i)]
-        psi_f = [ψ_f[j].vec[i] for i in x:x, j in eachindex(ψ_f)]
-        mul!(coeffi, psi_f', psi_i)
+        for j in eachindex(psi_i, psi_f)
+            psi_i[j] = ψ_i[j].vec[x]
+            psi_f[j] = conj(ψ_f[j].vec[x])
+        end
+        mul!(coeffi, psi_f, transpose(psi_i))
         product::Complex{F} = prod(
             orbital_inner_prod[occ_list(ψ_f[1].space.list[x])];
             init = one(Complex{F})
