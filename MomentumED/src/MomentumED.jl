@@ -278,7 +278,7 @@ module MomentumED
             @assert isupper(Hamiltonian) "Use upper_hermitian form of Hamiltonian operator when ishermitian = true."
         end
 
-        if method == :map || method == :cuda_map || method == :gpu_map
+        if method == :map
 
             dim = length(subspace)
             if dim < map_warning_dim && method_info
@@ -286,11 +286,6 @@ module MomentumED
             end
 
             H_map = LinearMap(Hamiltonian, subspace)
-
-            if method == :cuda_map || method == :gpu_map
-                Methods._throw_cuda_unavailable()
-                H_map = CuLinearMap(H_map)
-            end
 
             # Solve the eigenvalue problem
             if showtime
@@ -301,10 +296,36 @@ module MomentumED
 
             length(vals) < N && error("Krylov method fails. Cannot find $N eigenvectors.")
             energies = vals[1:N]
-            vectors = [MBS64Vector(Array(vecs[i]), subspace) for i in 1:N]
+            vectors = [MBS64Vector(vecs[i], subspace) for i in 1:N]
 
             return energies, vectors
+        elseif method == :cuda_map || method == :gpu_map
 
+            dim = length(subspace)
+            if dim < map_warning_dim && method_info
+                @warn "Linear map may be slow for dim=$dim. Consider using :sparse method."
+            end
+            
+            Methods._throw_cuda_unavailable()
+            H_map = LinearMap(Hamiltonian, subspace)
+            H_gpu = Methods.create_CuLinearMap(H_map)
+
+            # Solve the eigenvalue problem with GPU-accelerated linear map
+            if showtime
+                @time vals, vecs_gpu, _ = krylov_map_solve(H_gpu, N; ishermitian, krylovkit_kwargs...)
+            else
+                vals, vecs_gpu, _ = krylov_map_solve(H_gpu, N; ishermitian, krylovkit_kwargs...)
+            end
+
+            length(vals) < N && error("Krylov method fails. Cannot find $N eigenvectors.")
+            energies = vals[1:N]
+            vectors = [MBS64Vector(Array(vecs_gpu[i]), subspace) for i in 1:N]
+
+            H_gpu = nothing; vecs_gpu = nothing
+            GC.gc() # free GPU memory immediately after use
+
+            return energies, vectors
+            
         elseif method == :sparse || method == :dense
             return EDsolve(subspace, Hamiltonian.scats; N, showtime, method, ishermitian,
                 min_sparse_dim, max_dense_dim, map_warning_dim, method_info,

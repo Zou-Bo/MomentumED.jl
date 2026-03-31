@@ -31,5 +31,4 @@ end
     return threads, launch_blocks
 end
 
-# function _cuda_linearmap_kernel! end
-# function _cuda_adjoint_linearmap_kernel! end
+function create_CuLinearMap end

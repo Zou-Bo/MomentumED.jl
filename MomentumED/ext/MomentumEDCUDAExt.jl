@@ -172,7 +172,8 @@ module MomentumEDCUDAExt
     end
 
     # Constructors, create from CPU linear map or MBOperator
-    function CuLinearMap(A::LinearMap{bits, F};
+    import MomentumED.Methods: create_CuLinearMap
+    function create_CuLinearMap(A::LinearMap{bits, F};
         device_id::Union{Nothing, Integer} = nothing,
         threads_per_block::Integer = 256,
         blocks::Union{Nothing, Integer} = nothing) where {bits, F}
