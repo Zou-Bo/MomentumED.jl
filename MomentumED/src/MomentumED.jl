@@ -26,7 +26,7 @@ export ED_sortedScatterList_onebody
 export ED_sortedScatterList_twobody
 
 # methods
-public SparseHmltMatrix, LinearMap
+public SparseHmltMatrix, LinearMap, CuLinearMap
 
 # analysis - reduced density matrix for entanglement spectrum
 export PES_1rdm, PES_MomtBlocks, PES_MomtBlock_rdm
@@ -69,7 +69,7 @@ module MomentumED
     export ED_sortedScatterList_twobody
 
     # methods
-    public SparseHmltMatrix, LinearMap
+    public SparseHmltMatrix, LinearMap, CuLinearMap
 
     # analysis - reduced density matrix for entanglement spectrum
     export PES_1rdm, PES_MomtBlocks, PES_MomtBlock_rdm
@@ -111,7 +111,7 @@ module MomentumED
     and use KrylovKit to solve them.
     """
     module Methods
-        export SparseHmltMatrix, LinearMap
+        export SparseHmltMatrix, LinearMap, CuLinearMap
         export krylov_map_solve, krylov_matrix_solve
 
         using EDCore
@@ -122,6 +122,7 @@ module MomentumED
         
         include("method/sparse_matrix.jl")
         include("method/linear_map.jl")
+        include("method/gpu_linear_map.jl")
     end
 
     """
@@ -143,7 +144,8 @@ module MomentumED
     - `method::Symbol = :sparse`: The diagonalization method. Options are:
         - `:sparse`: (Default) Constructs the Hamiltonian as a sparse matrix. Good for most cases.
         - `:dense`: Constructs a dense matrix. Can be faster for very small systems.
-        - `:map`: Uses a matrix-free `LinearMap` approach. This is the most memory-efficient method for very large systems and requires the `hamiltonian` to be an `MBOperator`.
+        - `:map`: Uses a CPU matrix-free `LinearMap` approach. This is the most memory-efficient method for very large systems and requires the `hamiltonian` to be an `MBOperator`.
+        - `:cuda_map` / `:gpu_map`: Uses a CUDA-backed matrix-free `CuLinearMap` on the active NVIDIA GPU. This also requires the `hamiltonian` to be an `MBOperator`.
     - `element_type::Type = Float64`: The element type for the Hamiltonian matrix (for `:sparse`/:`dense`).
     - `index_type::Type = Int64`: The integer type for the sparse matrix indices (for `:sparse`).
     - `min_sparse_dim::Int64 = 100`: If `method` is `:sparse` but the dimension is smaller than this, it will automatically switch to `:dense`.
@@ -176,17 +178,15 @@ module MomentumED
     ```
     """
     function EDsolve(subspace::HilbertSubspace{bits}, sorted_scat_lists::Vector{<: Scatter}...;
-        N::Int64 = 6, showtime::Bool = false, method::Symbol = :sparse, ishermitian::Bool = true,
+        N::Int64, showtime::Bool = false, method::Symbol = :sparse, ishermitian::Bool = true,
         min_sparse_dim::Int64 = 100, max_dense_dim::Int64 = 200, map_warning_dim::Int64 = 20000, 
         method_info::Bool = true, element_type::Type = Float64, index_type::Type = Int64, 
         krylovkit_kwargs... ) where {bits}
 
         @assert N >= 1
 
-        if method == :map
-
-            error("Linear map method is only supported when input Hamitonian is MBOperator instead of Vector{Scatter}.")
-
+        if method ∈ (:map, :cuda_map, :gpu_map)
+            error("Linear map methods (:map, :cuda_map, :gpu_map) are only supported when input Hamitonian is MBOperator instead of Vector{Scatter}.")
         elseif method == :sparse || method == :dense
 
             if min_sparse_dim > max_dense_dim
@@ -261,16 +261,18 @@ module MomentumED
             end
 
         else
-            error("Unknown method: $method. Use :sparse, :dense, or :map.")
+            error("Unknown method: $method. Use :sparse, :dense, :map, :cuda_map, or :gpu_map.")
         end
 
         return energies, vectors
     end
     function EDsolve(subspace::HilbertSubspace{bits}, Hamiltonian::MBOperator;
-        N::Int64 = 6, showtime::Bool = false, method::Symbol = :sparse, ishermitian::Bool = true,
+        N::Int64, showtime::Bool = false, method::Symbol = :sparse, ishermitian::Bool = true,
         min_sparse_dim::Int64 = 100, max_dense_dim::Int64 = 200, map_warning_dim::Int64 = 20000,
-        method_info::Bool = true, element_type::Type = Float64, index_type::Type = Int64, 
+        method_info::Bool = true, element_type::Type = Float64, index_type::Type = Int64,
         krylovkit_kwargs... ) where{bits}
+
+        @assert N >= 1
 
         if ishermitian
             @assert isupper(Hamiltonian) "Use upper_hermitian form of Hamiltonian operator when ishermitian = true."
@@ -292,8 +294,34 @@ module MomentumED
                 vals, vecs, _ = krylov_map_solve(H_map, N; ishermitian, krylovkit_kwargs...)
             end
 
+            length(vals) < N && error("Krylov method fails. Cannot find $N eigenvectors.")
             energies = vals[1:N]
             vectors = [MBS64Vector(vecs[i], subspace) for i in 1:N]
+
+            return energies, vectors
+
+        elseif method == :cuda_map || method == :gpu_map
+
+            dim = length(subspace)
+            if dim < map_warning_dim && method_info
+                @warn "CUDA linear map may be slow for dim=$dim. Consider using :sparse or CPU :map methods."
+            end
+
+            H_map = CuLinearMap(Hamiltonian, subspace;
+                device_id = cuda_device,
+                threads_per_block = cuda_threads,
+                blocks = cuda_blocks,
+            )
+
+            if showtime
+                @time vals, vecs, _ = krylov_map_solve(H_map, N; ishermitian, krylovkit_kwargs...)
+            else
+                vals, vecs, _ = krylov_map_solve(H_map, N; ishermitian, krylovkit_kwargs...)
+            end
+
+            length(vals) < N && error("Krylov method fails. Cannot find $N eigenvectors.")
+            energies = vals[1:N]
+            vectors = [MBS64Vector(Vector(vecs[i]), subspace) for i in 1:N]
 
             return energies, vectors
 
