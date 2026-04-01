@@ -32,3 +32,4 @@ end
 end
 
 function create_CuLinearMap end
+function release_cuda_after_eigsolve! end

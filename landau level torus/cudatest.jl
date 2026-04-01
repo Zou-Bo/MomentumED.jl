@@ -50,11 +50,11 @@ function plot_ed_spectrum(energies, ss_k1, ss_k2;
 end
 
 # System parameters
-k_list = [0 1 2 3 0 1 2 3 0 1 2 3 0 1 2 3 0 1 2 3 0 1 2 3;
-          0 0 0 0 1 1 1 1 2 2 2 2 3 3 3 3 4 4 4 4 5 5 5 5]
-Nk = 24         # Total number of k-points
-Gk = (4, 6)     # Grid dimensions (G1_direction, G2_direction)
-Ne = 8          # Ne electrons for this system
+k_list = [0 3 6 2 5 8 1 4 7 0 3 6 2 5 8 1 4 7 0 3 6 2 5 8 1 4 7;
+          0 0 0 1 1 1 2 2 2 3 3 3 4 4 4 5 5 5 6 6 6 7 7 7 8 8 8]
+Nk = 27          # Total number of k-points
+Gk = (9, 9)      # Grid dimensions (G1_direction, G2_direction)
+Ne = 9          # N electrons for this system
 # Set up component parameters: (layer, level, Chern number, pseudospin)
 sys_int = LandauInteraction(ReciprocalLattice(:triangular), (1, 0, 1, 0));
 sys_int.D_l = 10.0                  # Screening length D/l
@@ -104,7 +104,7 @@ CUDA.memory_status()
 
 
 # LinearAlgebra.BLAS.set_num_threads(1)
-Neigen = 1  # Number of eigenvalues to compute per subspace
+Neigen = 6  # Number of eigenvalues to compute per subspace
 energies = Vector{Vector{Float64}}(undef, length(subspaces));
 vectors = Vector{Vector{<:MBS64Vector}}(undef, length(subspaces));
 range = 1:10
@@ -114,10 +114,10 @@ range = 1:10
         N = Neigen, showtime = true, ishermitian = true, method_info = false,
         # method = :sparse,
         # method = :map,
-        method = :gpu_map,
+        method = :gpu_map, 
+        verbosity = 4
     )
 end
-
 
 plot_ed_spectrum(energies[range]/Nk/LLT.W0, ss_k1, ss_k2,
     title = "Nk = $Nk, Ne = $Ne",

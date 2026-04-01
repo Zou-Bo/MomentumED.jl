@@ -217,16 +217,18 @@ module MomentumEDCUDAExt
     function (A::CuLinearMap{bits, F})(x::CuVector{Complex{F}}) where {bits, F}
         y = similar(x)
         A(y, x)
+        release_cuda_after_eigsolve!()
         return y
     end
 
     function (A::CuAdjointLinearMap{bits, F})(x::CuVector{Complex{F}}) where {bits, F}
         y = similar(x)
         A(y, x)
+        release_cuda_after_eigsolve!()
         return y
     end
 
-    import MomentumED.Methods: krylov_map_solve
+    import MomentumED.Methods: krylov_map_solve, release_cuda_after_eigsolve!
     function krylov_map_solve(
         H::AbstractCuLinearMap{bits, F}, N_eigen::Int64;
         ishermitian::Bool=true,
@@ -240,7 +242,17 @@ module MomentumEDCUDAExt
             vec0 = CuArray(vec0)
         end
         N_eigen = min(N_eigen, m)
-        eigsolve(H, vec0, N_eigen, :SR; ishermitian, krylovkit_kwargs...)
+
+        previous_threads = KrylovKit.get_num_threads()
+        KrylovKit.set_num_threads(1) 
+        results = eigsolve(H, vec0, N_eigen, :SR; ishermitian, krylovkit_kwargs...)
+        KrylovKit.set_num_threads(previous_threads)
+        return results
+    end
+    function release_cuda_after_eigsolve!()
+        # CUDA.synchronize()
+        GC.gc()
+        CUDA.reclaim()
     end
 
 
