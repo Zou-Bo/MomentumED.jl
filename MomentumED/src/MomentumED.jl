@@ -322,7 +322,8 @@ module MomentumED
             vectors = [MBS64Vector(Array(vecs_gpu[i]), subspace) for i in 1:N]
 
             H_gpu = nothing; vecs_gpu = nothing
-            Methods.release_cuda_after_eigsolve!() # free GPU memory
+            # GC.gc() # free GPU memory 
+            Methods.release_cuda_after_eigsolve!(2) # free GPU memory
 
             return energies, vectors
             
