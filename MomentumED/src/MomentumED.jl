@@ -321,10 +321,10 @@ module MomentumED
             energies = vals[1:N]
             vectors = [MBS64Vector(Array(vecs_gpu[i]), subspace) for i in 1:N]
 
+            # free GPU memory
             H_gpu = nothing; vecs_gpu = nothing
-            # GC.gc() # free GPU memory 
-            Methods.release_cuda_after_eigsolve!(2) # free GPU memory
-
+            Methods.release_cuda_after_eigsolve!(2)
+            
             return energies, vectors
             
         elseif method == :sparse || method == :dense
