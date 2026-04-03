@@ -5,17 +5,27 @@ module MomentumEDCUDAExt
     using KrylovKit
     using LinearAlgebra
 
+    # global flags and parameters
+    using MomentumED: CUDA_AVAILABLE, CUDA_KRYLOV_INPLACE_RESTART_CHUNKSIZE, CUDA_MEMORY_MONITOR
+    # using MomentumED.Methods: _check_linearmap_dims, _throw_cuda_unavailable
+
     function __init__()
         if CUDA.functional()
-            MomentumED.Methods.CUDA_AVAILABLE[] = true
+            CUDA_AVAILABLE[] = true
         else
             @warn "CUDA.jl is loaded but no functional GPU detected. GPU methods disabled."
         end
     end
 
-    using MomentumED.Methods: _check_linearmap_dims, _gpu_launch_dims, _throw_cuda_unavailable
+    # gpu memory release
+    import MomentumED.Methods: release_cuda!
+    function release_cuda!(level::Int = 1)
+        level >= 3 && CUDA.synchronize()
+        level >= 1 && GC.gc()
+        level >= 2 && CUDA.reclaim()
+    end
 
-    # CuLinearMap and CuAdjointLinearMap
+    # Definition: CuLinearMap and CuAdjointLinearMap
     using MomentumED.Methods: LinearMap, AbstractCuLinearMap
     mutable struct CuLinearMap{bits, F <: AbstractFloat} <: AbstractCuLinearMap{bits, F}
         scat_amp::CuVector{Complex{F}}
@@ -172,7 +182,7 @@ module MomentumEDCUDAExt
     end
 
     # Constructors, create from CPU linear map or MBOperator
-    import MomentumED.Methods: create_CuLinearMap
+    import MomentumED.Methods: create_CuLinearMap, _gpu_launch_dims
     function create_CuLinearMap(A::LinearMap{bits, F};
         device_id::Union{Nothing, Integer} = nothing,
         threads_per_block::Integer = 256,
@@ -196,12 +206,8 @@ module MomentumEDCUDAExt
             A.space, threads, launch_blocks
         )
     end
-    # function CuLinearMap(op::MBOperator{Complex{F}, MBS64{bits}},
-    #         space::HilbertSubspace{bits}; kwargs...) where {bits, F}
-    #     CuLinearMap(LinearMap(op, space); kwargs...)
-    # end
 
-    # ── Callable (launch kernels) ──
+    # Callable LinearMap-CuVector multiplication
     function (A::CuLinearMap{bits, F})(y::CuVector{Complex{F}}, x::CuVector{Complex{F}}) where {bits, F}
         @cuda threads=A.threads blocks=A.blocks _cuda_linearmap_kernel!(
             y, x, A.space_list, A.scat_amp, A.scat_in, A.scat_out)
@@ -226,6 +232,7 @@ module MomentumEDCUDAExt
         return y
     end
 
+    # CUDA version of krylov_map_solve
     import MomentumED.Methods: krylov_map_solve
     function krylov_map_solve(
         H::AbstractCuLinearMap{bits, F}, N_eigen::Int64;
@@ -248,17 +255,7 @@ module MomentumEDCUDAExt
         return results
     end
 
-
-    # gpu memory release
-    import MomentumED.Methods: release_cuda_after_eigsolve!
-    function release_cuda_after_eigsolve!(level::Int = 1)
-        level >= 3 && CUDA.synchronize()
-        level >= 1 && GC.gc()
-        level >= 2 && CUDA.reclaim()
-    end
-
-
-
+    # Below are overriding KrylovKit's functions for better GPU memory management
     # in-place restart in krylov eigsolve
     import KrylovKit: basistransform!, OrthonormalBasis
     import LinearAlgebra: mul!
@@ -267,7 +264,7 @@ module MomentumEDCUDAExt
         m == length(b) || throw(DimensionMismatch())
         
         N = length(b[1])
-        chunk = min(N, MomentumED.Methods.CUDA_KRYLOV_INPLACE_RESTART_CHUNKSIZE[])
+        chunk = min(N, CUDA_KRYLOV_INPLACE_RESTART_CHUNKSIZE[])
         
         buf_in  = CuArray{T}(undef, chunk, m)
         buf_out = CuArray{T}(undef, chunk, n)
@@ -287,45 +284,43 @@ module MomentumEDCUDAExt
                 copyto!(view(b[j], start:stop), view(buf_out, 1:len, j))
             end
         end
+
+        CUDA_MEMORY_MONITOR[] && CUDA.memory_status()
         
         CUDA.unsafe_free!(buf_in)
         CUDA.unsafe_free!(buf_out)
         CUDA.unsafe_free!(U_gpu)
 
-        CUDA.memory_status()
-
-        
-        # resize!(b, n)
         return b
     end
 
-
     # Gabbage collection after shrinking and restart
-    # import KrylovKit: shrink!, LanczosFactorization
-    # function shrink!(state::LanczosFactorization{CuVector{T}, S}, k; verbosity::Int = KrylovDefaults.verbosity[])
-    #     length(state) == length(state.V) ||
-    #         error("we cannot shrink LanczosFactorization without keeping Lanczos vectors")
-    #     length(state) <= k && return state
-    #     V = state.V
-    #     while length(V) > k + 1
-    #         pop!(V)
-    #     end
-    #     r = pop!(V)
-    #     resize!(state.αs, k)
-    #     resize!(state.βs, k)
-    #     state.k = k
-    #     β = KrylovKit.normres(state)
-    #     if verbosity > KrylovKit.EACHITERATION_LEVEL
-    #         @info "Lanczos reduction to dimension $k: subspace normres = $(KrylovKit.normres2string(β))"
-    #     end
-    #     state.r = KrylovKit.scale!!(r, β)
+    import KrylovKit: shrink!, LanczosFactorization
+    function shrink!(state::LanczosFactorization{CuArray{T, 1, CUDA.DeviceMemory}, S}, k; 
+        verbosity::Int = KrylovDefaults.verbosity[]) where {T<:Complex, S<:Real}
 
-    #     # add GPU memory cleanup here
-    #     GC.gc()
-    #     CUDA.reclaim()
-    #     CUDA.memory_status()
-    #     return state
-    # end
+        length(state) == length(state.V) ||
+            error("we cannot shrink LanczosFactorization without keeping Lanczos vectors")
+        length(state) <= k && return state
+        V = state.V
+        while length(V) > k + 1
+            pop!(V)
+        end
+        r = pop!(V)
+        resize!(state.αs, k)
+        resize!(state.βs, k)
+        state.k = k
+        β = KrylovKit.normres(state)
+        if verbosity > KrylovKit.EACHITERATION_LEVEL
+            @info "Lanczos reduction to dimension $k: subspace normres = $(KrylovKit.normres2string(β))"
+        end
+        state.r = KrylovKit.scale!!(r, β)
+
+        # add GPU memory cleanup here
+        release_cuda!(2)
+
+        return state
+    end
 
 
 

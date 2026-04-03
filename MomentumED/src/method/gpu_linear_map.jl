@@ -5,7 +5,7 @@ Only names and method signatures are defined here; the actual code is in the ext
 
 global const CUDA_AVAILABLE = Ref(false)
 global const CUDA_KRYLOV_INPLACE_RESTART_CHUNKSIZE = Ref{Int64}(262144)
-
+global const CUDA_MEMORY_MONITOR = Ref(true)
 
 """
 CUDA-backed matrix-free linear map. Constructed by the CUDA extension.
@@ -34,4 +34,4 @@ end
 end
 
 function create_CuLinearMap end
-function release_cuda_after_eigsolve! end
+function release_cuda! end
