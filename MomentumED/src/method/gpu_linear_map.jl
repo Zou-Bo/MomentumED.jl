@@ -34,4 +34,4 @@ end
 end
 
 function create_CuLinearMap end
-function release_cuda! end
+function release_cuda end

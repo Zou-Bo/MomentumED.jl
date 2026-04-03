@@ -18,8 +18,8 @@ module MomentumEDCUDAExt
     end
 
     # gpu memory release
-    import MomentumED.Methods: release_cuda!
-    function release_cuda!(level::Int = 1)
+    import MomentumED.Methods: release_cuda
+    function release_cuda(level::Int = 2)
         level >= 3 && CUDA.synchronize()
         level >= 1 && GC.gc()
         level >= 2 && CUDA.reclaim()
@@ -317,7 +317,7 @@ module MomentumEDCUDAExt
         state.r = KrylovKit.scale!!(r, β)
 
         # add GPU memory cleanup here
-        release_cuda!(2)
+        release_cuda(2)
 
         return state
     end

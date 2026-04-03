@@ -78,6 +78,7 @@ MomentumED.CUDA_MEMORY_MONITOR[] # default value true
 MomentumED.CUDA_MEMORY_MONITOR[] = false
 
 
+MomentumED.release_cuda()
 
 
 e_sparse, _ = EDsolve(subspaces[1], hmlt; N=4, method=:sparse);

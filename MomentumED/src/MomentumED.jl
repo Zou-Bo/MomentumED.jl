@@ -27,7 +27,7 @@ export ED_sortedScatterList_twobody
 
 # methods
 public SparseHmltMatrix, LinearMap
-public release_cuda!, CUDA_AVAILABLE, CUDA_KRYLOV_INPLACE_RESTART_CHUNKSIZE, CUDA_MEMORY_MONITOR
+public release_cuda, CUDA_AVAILABLE, CUDA_KRYLOV_INPLACE_RESTART_CHUNKSIZE, CUDA_MEMORY_MONITOR
 
 # analysis - reduced density matrix for entanglement spectrum
 export PES_1rdm, PES_MomtBlocks, PES_MomtBlock_rdm
@@ -71,7 +71,7 @@ module MomentumED
 
     # methods
     public SparseHmltMatrix, LinearMap
-    public release_cuda!, CUDA_AVAILABLE, CUDA_KRYLOV_INPLACE_RESTART_CHUNKSIZE, CUDA_MEMORY_MONITOR
+    public release_cuda, CUDA_AVAILABLE, CUDA_KRYLOV_INPLACE_RESTART_CHUNKSIZE, CUDA_MEMORY_MONITOR
 
     # analysis - reduced density matrix for entanglement spectrum
     export PES_1rdm, PES_MomtBlocks, PES_MomtBlock_rdm
@@ -117,7 +117,7 @@ module MomentumED
         export krylov_map_solve, krylov_matrix_solve
 
         # CUDA-specific flags, parameters, and functions
-        export release_cuda!
+        export release_cuda
         export CUDA_AVAILABLE
         export CUDA_KRYLOV_INPLACE_RESTART_CHUNKSIZE
         export CUDA_MEMORY_MONITOR
@@ -331,7 +331,7 @@ module MomentumED
 
             # free GPU memory
             H_gpu = nothing; vecs_gpu = nothing
-            release_cuda!(2)
+            release_cuda(2)
             
             return energies, vectors
             
