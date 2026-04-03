@@ -4,6 +4,8 @@ Only names and method signatures are defined here; the actual code is in the ext
 """
 
 global const CUDA_AVAILABLE = Ref(false)
+global const CUDA_restart_chunk_size = Ref{Int64}(262144)
+
 
 """
 CUDA-backed matrix-free linear map. Constructed by the CUDA extension.

@@ -216,14 +216,12 @@ module MomentumEDCUDAExt
     function (A::CuLinearMap{bits, F})(x::CuVector{Complex{F}}) where {bits, F}
         y = similar(x)
         A(y, x)
-        release_cuda_after_eigsolve!(0)
         return y
     end
 
     function (A::CuAdjointLinearMap{bits, F})(x::CuVector{Complex{F}}) where {bits, F}
         y = similar(x)
         A(y, x)
-        release_cuda_after_eigsolve!(0)
         return y
     end
 
@@ -257,31 +255,72 @@ module MomentumEDCUDAExt
         level >= 1 && GC.gc()
         level >= 2 && CUDA.reclaim()
     end
-    # import KrylovKit: shrink!, LanczosFactorization
-    # function shrink!(state::LanczosFactorization, k; verbosity::Int = KrylovDefaults.verbosity[])
-    #     length(state) == length(state.V) ||
-    #         error("we cannot shrink LanczosFactorization without keeping Lanczos vectors")
-    #     length(state) <= k && return state
-    #     V = state.V
-    #     while length(V) > k + 1
-    #         pop!(V)
-    #     end
-    #     r = pop!(V)
-    #     resize!(state.αs, k)
-    #     resize!(state.βs, k)
-    #     state.k = k
-    #     β = KrylovKit.normres(state)
-    #     if verbosity > KrylovKit.EACHITERATION_LEVEL
-    #         @info "Lanczos reduction to dimension $k: subspace normres = $(KrylovKit.normres2string(β))"
-    #     end
-    #     state.r = KrylovKit.scale!!(r, β)
-    #     GC.gc() # free GPU memory immediately after shrinking
-    #     return state
-    # end
 
 
 
+    # in-place restart in krylov eigsolve
+    import KrylovKit: basistransform!, OrthonormalBasis
+    function basistransform!(b::OrthonormalBasis{CuVector{T}}, U::AbstractMatrix) where {T <: Complex}
+        m, n = size(U)
+        m == length(b) || throw(DimensionMismatch())
+        
+        N = length(b[1])
+        chunk = min(N, MomentumED.Methods.CUDA_restart_chunk_size[])
+        
+        buf_in  = CuArray{T}(undef, chunk, m)
+        buf_out = CuArray{T}(undef, chunk, n)
+        U_gpu   = CuArray(T.(U))
+        
+        for start in 1:chunk:N
+            len = min(chunk, N - start + 1)
+            stop = start + len - 1
+            
+            for j in 1:m
+                copyto!(view(buf_in, 1:len, j), view(b[j], start:stop))
+            end
+            
+            mul!(view(buf_out, 1:len, :), view(buf_in, 1:len, :), view(U_gpu, :, 1:n))
+            
+            for j in 1:n
+                copyto!(view(b[j], start:stop), view(buf_out, 1:len, j))
+            end
+        end
+        
+        CUDA.unsafe_free!(buf_in)
+        CUDA.unsafe_free!(buf_out)
+        CUDA.unsafe_free!(U_gpu)
+        
+        # resize!(b, n)
+        return b
+    end
 
+
+    # Gabbage collection after shrinking and restart
+    import KrylovKit: shrink!, LanczosFactorization
+    function shrink!(state::LanczosFactorization{CuVector{<:Complex}, <:Real}, k; verbosity::Int = KrylovDefaults.verbosity[])
+        length(state) == length(state.V) ||
+            error("we cannot shrink LanczosFactorization without keeping Lanczos vectors")
+        length(state) <= k && return state
+        V = state.V
+        while length(V) > k + 1
+            pop!(V)
+        end
+        r = pop!(V)
+        resize!(state.αs, k)
+        resize!(state.βs, k)
+        state.k = k
+        β = KrylovKit.normres(state)
+        if verbosity > KrylovKit.EACHITERATION_LEVEL
+            @info "Lanczos reduction to dimension $k: subspace normres = $(KrylovKit.normres2string(β))"
+        end
+        state.r = KrylovKit.scale!!(r, β)
+
+        # add GPU memory cleanup here
+        GC.gc()
+        CUDA.reclaim()
+        CUDA.memory_status()
+        return state
+    end
 
 
 
