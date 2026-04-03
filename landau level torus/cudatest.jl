@@ -81,30 +81,30 @@ hmlt = MBOperator(scat, upper_hermitian = true)
 
 using CUDA
 
-# using KrylovKit
-# import KrylovKit: shrink!, LanczosFactorization
-# function shrink!(state::LanczosFactorization, k; verbosity::Int = KrylovDefaults.verbosity[])
-#     length(state) == length(state.V) ||
-#         error("we cannot shrink LanczosFactorization without keeping Lanczos vectors")
-#     length(state) <= k && return state
-#     V = state.V
-#     while length(V) > k + 1
-#         pop!(V)
-#     end
-#     r = pop!(V)
-#     resize!(state.αs, k)
-#     resize!(state.βs, k)
-#     state.k = k
-#     β = KrylovKit.normres(state)
-#     if verbosity > KrylovKit.EACHITERATION_LEVEL
-#         @info "Lanczos reduction to dimension $k: subspace normres = $(KrylovKit.normres2string(β))"
-#     end
-#     state.r = KrylovKit.scale!!(r, β)
-#     GC.gc() # free GPU memory immediately after shrinking
-#     # CUDA.reclaim()
-#     CUDA.memory_status()
-#     return state
-# end
+using KrylovKit
+import KrylovKit: shrink!, LanczosFactorization
+function shrink!(state::LanczosFactorization, k; verbosity::Int = KrylovDefaults.verbosity[])
+    length(state) == length(state.V) ||
+        error("we cannot shrink LanczosFactorization without keeping Lanczos vectors")
+    length(state) <= k && return state
+    V = state.V
+    while length(V) > k + 1
+        pop!(V)
+    end
+    r = pop!(V)
+    resize!(state.αs, k)
+    resize!(state.βs, k)
+    state.k = k
+    β = KrylovKit.normres(state)
+    if verbosity > KrylovKit.EACHITERATION_LEVEL
+        @info "Lanczos reduction to dimension $k: subspace normres = $(KrylovKit.normres2string(β))"
+    end
+    state.r = KrylovKit.scale!!(r, β)
+    GC.gc() # free GPU memory immediately after shrinking
+    CUDA.reclaim()
+    # CUDA.memory_status()
+    return state
+end
 
 
 

@@ -262,7 +262,7 @@ module MomentumEDCUDAExt
     # in-place restart in krylov eigsolve
     import KrylovKit: basistransform!, OrthonormalBasis
     import LinearAlgebra: mul!
-    function basistransform!(b::OrthonormalBasis{CuVector{T}}, U::AbstractMatrix) where {T <: Complex}
+    function basistransform!(b::OrthonormalBasis{CuArray{T, 1, CUDA.DeviceMemory}}, U::AbstractMatrix) where {T}
         m, n = size(U)
         m == length(b) || throw(DimensionMismatch())
         
@@ -291,6 +291,9 @@ module MomentumEDCUDAExt
         CUDA.unsafe_free!(buf_in)
         CUDA.unsafe_free!(buf_out)
         CUDA.unsafe_free!(U_gpu)
+
+        CUDA.memory_status()
+
         
         # resize!(b, n)
         return b
@@ -298,31 +301,31 @@ module MomentumEDCUDAExt
 
 
     # Gabbage collection after shrinking and restart
-    import KrylovKit: shrink!, LanczosFactorization
-    function shrink!(state::LanczosFactorization{CuVector{<:Complex}, <:Real}, k; verbosity::Int = KrylovDefaults.verbosity[])
-        length(state) == length(state.V) ||
-            error("we cannot shrink LanczosFactorization without keeping Lanczos vectors")
-        length(state) <= k && return state
-        V = state.V
-        while length(V) > k + 1
-            pop!(V)
-        end
-        r = pop!(V)
-        resize!(state.αs, k)
-        resize!(state.βs, k)
-        state.k = k
-        β = KrylovKit.normres(state)
-        if verbosity > KrylovKit.EACHITERATION_LEVEL
-            @info "Lanczos reduction to dimension $k: subspace normres = $(KrylovKit.normres2string(β))"
-        end
-        state.r = KrylovKit.scale!!(r, β)
+    # import KrylovKit: shrink!, LanczosFactorization
+    # function shrink!(state::LanczosFactorization{CuVector{T}, S}, k; verbosity::Int = KrylovDefaults.verbosity[])
+    #     length(state) == length(state.V) ||
+    #         error("we cannot shrink LanczosFactorization without keeping Lanczos vectors")
+    #     length(state) <= k && return state
+    #     V = state.V
+    #     while length(V) > k + 1
+    #         pop!(V)
+    #     end
+    #     r = pop!(V)
+    #     resize!(state.αs, k)
+    #     resize!(state.βs, k)
+    #     state.k = k
+    #     β = KrylovKit.normres(state)
+    #     if verbosity > KrylovKit.EACHITERATION_LEVEL
+    #         @info "Lanczos reduction to dimension $k: subspace normres = $(KrylovKit.normres2string(β))"
+    #     end
+    #     state.r = KrylovKit.scale!!(r, β)
 
-        # add GPU memory cleanup here
-        GC.gc()
-        CUDA.reclaim()
-        CUDA.memory_status()
-        return state
-    end
+    #     # add GPU memory cleanup here
+    #     GC.gc()
+    #     CUDA.reclaim()
+    #     CUDA.memory_status()
+    #     return state
+    # end
 
 
 
