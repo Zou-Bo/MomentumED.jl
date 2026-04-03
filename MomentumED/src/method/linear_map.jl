@@ -1,5 +1,5 @@
 """
-This file provides optimized structure than MBOperator for doing Krylov-Schur method
+This file provides matrix-free LinearMap structures for Krylov-Schur diagonalization.
 """
 
 # todo list
@@ -8,13 +8,14 @@ This file provides optimized structure than MBOperator for doing Krylov-Schur me
 using LinearAlgebra
 
 abstract type AbstractLinearMap{bits, F <: AbstractFloat} end
+abstract type AbstractCPULinearMap{bits, F <: AbstractFloat} <: AbstractLinearMap{bits, F} end
 
 """
 (docstring needed)
 when constructing LinearMap from scat_list, the list is always copied as a distict Vector.
 when constructing from adjointing a AdjointLinearMap, the scat_list is shared.
 """
-mutable struct LinearMap{bits, F <: AbstractFloat} <: AbstractLinearMap{bits, F}
+mutable struct LinearMap{bits, F <: AbstractFloat} <: AbstractCPULinearMap{bits, F}
     scat_list::Vector{Scatter{Complex{F}, MBS64{bits}}}
     space::HilbertSubspace{bits}
 
@@ -44,7 +45,7 @@ end
 (docstring needed)
 The AdjointLinearMap can only be constructed by adjointing a LinearMap, sharing the scat_list.
 """
-mutable struct AdjointLinearMap{bits, F <: AbstractFloat} <: AbstractLinearMap{bits, F}
+mutable struct AdjointLinearMap{bits, F <: AbstractFloat} <: AbstractCPULinearMap{bits, F}
     scat_list::Vector{Scatter{Complex{F}, MBS64{bits}}}
     space::HilbertSubspace{bits}
 
@@ -54,21 +55,33 @@ mutable struct AdjointLinearMap{bits, F <: AbstractFloat} <: AbstractLinearMap{b
 end
 
 import Base: size, adjoint, eltype
-import LinearAlgebra: adjoint!
+# import LinearAlgebra: adjoint!
 
+"""
+(docstring needed)
+"""
 function size(A::AbstractLinearMap)
     n = length(A.space)
     return (n, n)
 end
-eltype(::AbstractLinearMap{bits, F}) where {bits, F<:AbstractFloat} = Complex{F}
+"""
+(docstring needed)
+"""
+eltype(::AbstractLinearMap{bits, F}) where {bits, F <: AbstractFloat} = Complex{F}
 
-function adjoint!(A_adj::AdjointLinearMap{bits, F})::LinearMap{bits, F} where {bits, F <: AbstractFloat}
-    A_adj = reinterpret(LinearMap{bits, F}, A_adj)
-end
-function adjoint!(A::LinearMap{bits, F})::AdjointLinearMap{bits, F} where {bits, F <: AbstractFloat}
-    A = reinterpret(AdjointLinearMap{bits, F}, A)
-end
+# """
+# (docstring needed)
+# """
+# function adjoint!(A_adj::AdjointLinearMap{bits, F})::LinearMap{bits, F} where {bits, F <: AbstractFloat}
+#     A_adj = reinterpret(LinearMap{bits, F}, A_adj)
+# end
+# function adjoint!(A::LinearMap{bits, F})::AdjointLinearMap{bits, F} where {bits, F <: AbstractFloat}
+#     A = reinterpret(AdjointLinearMap{bits, F}, A)
+# end
 
+"""
+(docstring needed)
+"""
 function adjoint(A_adj::AdjointLinearMap{bits, F})::LinearMap{bits, F} where {bits, F <: AbstractFloat}
     reinterpret(LinearMap{bits, F}, A_adj)
 end
@@ -77,12 +90,19 @@ function adjoint(A::LinearMap{bits, F})::AdjointLinearMap{bits, F} where {bits, 
 end
 
 # multiplication
-
-function (A::LinearMap{bits, F})(y::Vector{Complex{F}}, x::Vector{Complex{F}}) where {bits, F}
-    n = length(A.space)
-    if length(y) != n && length(x) != n
+@inline function _check_linearmap_dims(y, x, n::Int)
+    if length(y) != n || length(x) != n
         throw(DimensionMismatch("Dimension of Hamiltonian linear map mismatches vector length."))
     end
+    return nothing
+end
+
+function (A::LinearMap{bits, F})(
+    y::AbstractVector{Complex{F}}, x::AbstractVector{Complex{F}}
+    )::AbstractVector{Complex{F}} where {bits, F}
+    
+    n = length(A.space)
+    _check_linearmap_dims(y, x, n)
 
     y .= zero(Complex{F})
     Threads.@threads for i in eachindex(A.space.list)
@@ -95,18 +115,19 @@ function (A::LinearMap{bits, F})(y::Vector{Complex{F}}, x::Vector{Complex{F}}) w
             end
         end
     end
-
+    return y
 end
 
-function (A::AdjointLinearMap{bits, F})(y::Vector{Complex{F}}, x::Vector{Complex{F}}) where {bits, F}
+function (A::AdjointLinearMap{bits, F})(
+    y::AbstractVector{Complex{F}}, x::AbstractVector{Complex{F}}
+    )::AbstractVector{Complex{F}} where {bits, F}
+
     n = length(A.space)
-    if length(y) == n && length(x) == n
-        throw(DimensionMismatch("Dimension of Hamiltonian linear map mismatches vector length."))
-    end
+    _check_linearmap_dims(y, x, n)
 
     y .= zero(Complex{F})
     Threads.@threads for i in eachindex(A.space.list)
-        for scat in scat_list
+        for scat in A.scat_list
             amp, mbs_in = scat * A.space.list[i] # adjoint operator: inversely scatter to find the mbs_in 
             if !iszero(amp)
                 j = get(A.space, mbs_in)
@@ -115,16 +136,16 @@ function (A::AdjointLinearMap{bits, F})(y::Vector{Complex{F}}, x::Vector{Complex
             end
         end
     end
-
+    return y
 end
 
-function (A::LinearMap{bits, F})(x::Vector{Complex{F}})::Vector{Complex{F}} where {bits, F}
+function (A::LinearMap{bits, F})(x::AbstractVector{Complex{F}})::AbstractVector{Complex{F}} where {bits, F}
     y = similar(x)
     A(y, x)
     return y
 end
 
-function (A::AdjointLinearMap{bits, F})(x::Vector{Complex{F}})::Vector{Complex{F}} where {bits, F}
+function (A::AdjointLinearMap{bits, F})(x::AbstractVector{Complex{F}})::AbstractVector{Complex{F}} where {bits, F}
     y = similar(x)
     A(y, x)
     return y
@@ -135,45 +156,32 @@ end
 
 
 """
-    krylov_map_solve(H::SparseMatrixCSC{ComplexF64, Int64}, N_eigen::Int64=6; 
+    krylov_map_solve(H::AbstractLinearMap, N_eigen::Int64; 
         ishermitian::Bool=true, vec0 = nothing, krylovkit_kwargs...) -> (vals, vecs)
 
-Solve the sparse Hamiltonian matrix using KrylovKit's eigsolve function for the lowest `N_eigen` eigenvalues and eigenvectors.
+Solve the matrix-free Hamiltonian map using KrylovKit's `eigsolve` function for the
+lowest `N_eigen` eigenvalues and eigenvectors.
 
 # Arguments
-- `H::SparseMatrixCSC{Complex{eltype}, idtype}`: Sparse Hamiltonian matrix to diagonalize
-- `N_eigen::Int64=6`: Number of eigenvalues/eigenvectors to compute (default: 6)
+- `H::AbstractLinearMap{bits, eltype}`: Matrix-free Hamiltonian map to diagonalize.
+- `N_eigen::Int64`: Number of eigenvalues/eigenvectors to compute.
 
 # Keywords
-- `ishermitian::Bool=true`: Whether the matrix is Hermitian (default: true)
-- `vec0::Union{Nothing, Vector{Complex{eltype}}}=nothing`: Use the given input to start Krylov-Schur algorithm; a randon vector is generated if no input
-- `krylovkit_kwargs...`: Additional keyword arguments to pass to KrylovKit.eigsolve
+- `ishermitian::Bool=true`: Whether the map is Hermitian.
+- `vec0::Union{Nothing, AbstractVector{Complex{eltype}}}=nothing`: Optional starting vector.
+  If `H isa CuLinearMap`, a random `CuArray` is generated on the active CUDA device.
+- `krylovkit_kwargs...`: Additional keyword arguments passed to `KrylovKit.eigsolve`.
 
 # Returns
-- `vals::Vector{eltype}`: Eigenvalues (energies) in ascending order
-- `vecs::Vector{Vector{Complex{eltype}}}`: Corresponding eigenvectors
-- `info`: Convergence information from KrylovKit
-
-# Examples
-```julia
-# Solve for 3 lowest eigenstates
-vals, vecs, info = krylov_map_solve(H_map, 3)
-println("Ground state energy: ", vals[1])
-```
-
-# Notes
-- Uses KrylovKit's eigsolve with :SR (smallest real) eigenvalue selection
-- Assumes Hermitian matrix (standard for quantum Hamiltonians)
-- Random initial vector ensures good convergence properties
-- Automatically handles convergence warnings from KrylovKit
-- For better control over convergence, consider using KrylovKit directly
+- `vals`: Eigenvalues.
+- `vecs`: Corresponding eigenvectors. Their container type follows the starting vector type.
+- `info`: Convergence information from KrylovKit.
 """
 function krylov_map_solve(
-    H::AbstractLinearMap{bits, eltype}, N_eigen::Int64;
-    ishermitian::Bool = true, 
-    vec0::Union{Nothing, Vector{Complex{eltype}}} = nothing, 
-    krylovkit_kwargs...
-)::Tuple{Vector{eltype}, Vector{Vector{Complex{eltype}}}, Any} where {bits, eltype<:AbstractFloat}
+    H::AbstractCPULinearMap{bits, eltype}, N_eigen::Int64;
+    ishermitian::Bool = true,
+    vec0::Union{Nothing, AbstractVector{Complex{eltype}}} = nothing,
+    krylovkit_kwargs...) where {bits, eltype <: AbstractFloat}
 
     m = length(H.space)
     if isnothing(vec0)
