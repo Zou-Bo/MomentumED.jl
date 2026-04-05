@@ -6,60 +6,57 @@
     and two-body Scatter terms with proper Hermitian matrix construction.
 """
 
-# depreciated, only complete_lower always false
+# function ED_HamiltonianMatrix_threaded_COO2CSC(
+#     subspace::HilbertSubspace{bits}, 
+#     scat_list::Vector{Scatter{Complex{ET}, MBS64{bits}}}; 
+#     isupper::Bool = true, complete_lower::Bool = false,
+#     element_type::Type{ET} = Float64, index_type::Type{IT} = Int64,
+# ) where {bits, ET <: AbstractFloat, IT <: Integer}
 
+#     @assert element_type ∈ (Float64, Float32) "element_type=$element_type. Use element_type Float64, Float32."
+#     @assert index_type ∈ (Int128, Int64, Int32, UInt128, UInt64, UInt32) """
+#     index_type=$index_type. Use index_type Int128, Int64, Int32, Int128, UInt64, or UInt32."""
 
-function ED_HamiltonianMatrix_threaded_COO2CSC(
-    subspace::HilbertSubspace{bits}, 
-    scat_list::Vector{Scatter{Complex{ET}, MBS64{bits}}}; 
-    isupper::Bool = true, complete_lower::Bool = false,
-    element_type::Type{ET} = Float64, index_type::Type{IT} = Int64,
-) where {bits, ET <: AbstractFloat, IT <: Integer}
-
-    @assert element_type ∈ (Float64, Float32) "element_type=$element_type. Use element_type Float64, Float32."
-    @assert index_type ∈ (Int128, Int64, Int32, UInt128, UInt64, UInt32) """
-    index_type=$index_type. Use index_type Int128, Int64, Int32, Int128, UInt64, or UInt32."""
-
-    n_states = length(subspace)
-    @assert n_states <= typemax(index_type) "Hilbert space too large for $index_type."
+#     n_states = length(subspace)
+#     @assert n_states <= typemax(index_type) "Hilbert space too large for $index_type."
     
-    # Thread-local storage for COO format
-    n_threads = Threads.nthreads()
-    thread_I = [Vector{index_type}() for _ in 1:n_threads]
-    thread_J = [Vector{index_type}() for _ in 1:n_threads]
-    thread_V = [Vector{Complex{element_type}}() for _ in 1:n_threads]
+#     # Thread-local storage for COO format
+#     n_threads = Threads.nthreads()
+#     thread_I = [Vector{index_type}() for _ in 1:n_threads]
+#     thread_J = [Vector{index_type}() for _ in 1:n_threads]
+#     thread_V = [Vector{Complex{element_type}}() for _ in 1:n_threads]
     
-    # Parallel construction over columns
-    Threads.@threads for j in 1:n_states
-        tid = Threads.threadid() - Threads.nthreads(:interactive)
-        mbs_in = subspace.list[j]
+#     # Parallel construction over columns
+#     Threads.@threads for j in 1:n_states
+#         tid = Threads.threadid() - Threads.nthreads(:interactive)
+#         mbs_in = subspace.list[j]
         
 
-        for scat in scat_list
-            amp, mbs_out = scat * mbs_in
-            if !iszero(amp)
-                i = get(subspace, mbs_out)
-                @assert i != 0 "H is not momentum- or component-conserving."
-                push!(thread_I[tid], i)
-                push!(thread_J[tid], j)
-                push!(thread_V[tid], amp)
-            end
-        end
-    end
+#         for scat in scat_list
+#             amp, mbs_out = scat * mbs_in
+#             if !iszero(amp)
+#                 i = get(subspace, mbs_out)
+#                 @assert i != 0 "H is not momentum- or component-conserving."
+#                 push!(thread_I[tid], i)
+#                 push!(thread_J[tid], j)
+#                 push!(thread_V[tid], amp)
+#             end
+#         end
+#     end
     
-    # Merge thread-local results
-    I = reduce(vcat, thread_I)
-    J = reduce(vcat, thread_J)
-    V = reduce(vcat, thread_V)
+#     # Merge thread-local results
+#     I = reduce(vcat, thread_I)
+#     J = reduce(vcat, thread_J)
+#     V = reduce(vcat, thread_V)
     
-    # Convert to sparse matrix (Hermitian)
-    H = sparse(I, J, V, n_states, n_states)
-    if isupper
-        return Hermitian(H, :U)
-    else
-        return H
-    end
-end
+#     # Convert to sparse matrix (Hermitian)
+#     H = sparse(I, J, V, n_states, n_states)
+#     if isupper
+#         return Hermitian(H, :U)
+#     else
+#         return H
+#     end
+# end
 
 function _isless_row_val_pair(a,b)
     first(a) < first(b)
@@ -115,15 +112,13 @@ function ED_HamiltonianMatrix_threaded_CSCdirect(
                     amp, mbs_out = scat * mbs_in
                     if !iszero(amp)
                         i = get(subspace, mbs_out)
-                        # @assert i != 0 "H is not momentum- or component-conserving."
-                        iszero(i) || push!(col_buf, (i, amp))
+                        index_fit(i, subspace, mbs_out) && push!(col_buf, (i, amp))
                     end
                     if !isdiagonal(scat)
                         amp, mbs_out = mbs_in * scat # inversely scatting
                         if !iszero(amp)
                             i = get(subspace, mbs_out)
-                            # @assert i != 0 "H is not momentum- or component-conserving."
-                            iszero(i) || push!(col_buf, (i, conj(amp)))
+                            index_fit(i, subspace, mbs_out) && push!(col_buf, (i, conj(amp)))
                         end
                     end
                 end
@@ -132,15 +127,10 @@ function ED_HamiltonianMatrix_threaded_CSCdirect(
                     amp, mbs_out = scat * mbs_in
                     if !iszero(amp)
                         i = get(subspace, mbs_out)
-                        # @assert i != 0 "H is not momentum- or component-conserving."
-                        iszero(i) || push!(col_buf, (i, amp))
+                        index_fit(i, subspace, mbs_out) && push!(col_buf, (i, amp))
                     end
                 end
             end
-
-            # This causes catastraphy! Why?
-            # sizehint!(strip_rowval[t], length(strip_rowval[t]) + length(col_buf))
-            # sizehint!(strip_nzval[t] , length(strip_nzval[t])  + length(col_buf))
 
             if !isempty(col_buf)
                 # sort by row index, in-place, no permutation array
@@ -221,7 +211,6 @@ Multithread generating Hamiltonian Matrix with pre-computed scattering terms.
 
 """
 SparseHmltMatrix = ED_HamiltonianMatrix_threaded_CSCdirect
-# SparseHmltMatrix = ED_HamiltonianMatrix_threaded_COO2CSC
 
 
 

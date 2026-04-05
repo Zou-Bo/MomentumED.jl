@@ -16,7 +16,7 @@ function OES_NumMomtBlocks(para::EDPara, orb_list,
     # collect results of blocks with different numbers
     lengthA = zeros(Int64, para.Nc_conserve)
     for i in maskA
-        c = fld1(i, para.Nk * para.Nc_hopping) 
+        c = fld1(i, para.Nk * para.Nc_mix) 
         lengthA[c] += 1
     end
     number_block_size = min.(lengthA, Ne) .+ 1
@@ -81,10 +81,14 @@ function OES_NumMomtBlock_coef(para::EDPara, vector::MBS64Vector{bits, F}, momen
                     for (B, mbsB) in enumerate(subspaceB[iB].list)
                         mbs = mbsA + mbsB
                         i = get(vector.space, mbs)
-                        if !transpose
-                            collect_matrices[iA][A, B] = vector.vec[i]
+                        if index_fit(i, vector.space, mbs) # must fit in the same subspace
+                            if !transpose
+                                collect_matrices[iA][A, B] = vector.vec[i]
+                            else
+                                collect_matrices[iA][B, A] = vector.vec[i]
+                            end
                         else
-                            collect_matrices[iA][B, A] = vector.vec[i]
+                            error()
                         end
                     end
                 end

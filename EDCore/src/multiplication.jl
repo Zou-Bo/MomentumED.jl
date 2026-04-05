@@ -95,11 +95,9 @@ function mul_add!(collect_result::MBS64Vector{bits, eltype},
             amp, mbs_out = scat * mbs_in
             iszero(amp) && continue
             i = get(collect_result.space, mbs_out)
-            if i != 0
+            if index_fit(i, collect_result.space, mbs_out)
                 collect_result.vec[i] += amp * mbs_vec.vec[j]
                 upper_hermitian && i != j && (collect_result.vec[j] += conj(amp) * mbs_vec.vec[i])
-            else
-                # @boundscheck throw(DimensionMismatch("The operator scatters the state out of its Hilbert subspace."))
             end
         end
     end
@@ -162,9 +160,7 @@ function mul_add_bracket(mbs_vec_bra::MBS64Vector{bits, eltype},
         amp, mbs_out = scat * mbs_in
         iszero(amp) && continue
         i = get(mbs_vec_bra.space, mbs_out)
-        if iszero(i)
-            # @boundscheck throw(DimensionMismatch("The operator does not scatter the incident state to the output state's Hilbert subspace."))
-        else
+        if index_fit(i, mbs_vec_bra.space, mbs_out)
             collect_result += conj(mbs_vec_bra.vec[i]) * amp * mbs_vec_ket.vec[j]
             if upper_hermitian && i != j
                 collect_result += conj(mbs_vec_bra.vec[j]) * conj(amp) * mbs_vec_ket.vec[i]
@@ -182,9 +178,7 @@ function mul_add_bracket(mbs_vec_bra::MBS64Vector{bits, eltype},
         amp, mbs_out = scat2 * (scat1 * mbs_in)
         iszero(amp) && continue         # necessary for multiple Scatter without middle dictionary
         i = get(mbs_vec_bra.space, mbs_out)
-        if iszero(i)
-            # @boundscheck throw(DimensionMismatch("The operators do not scatter the incident state to the output state's Hilbert subspace."))
-        else
+        if index_fit(i, mbs_vec_bra.space, mbs_out)
             collect_result += conj(mbs_vec_bra.vec[i]) * amp * mbs_vec_ket.vec[j]
         end
     end

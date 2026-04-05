@@ -2,7 +2,7 @@ using LinearAlgebra
 
 @testset "MBS64Vector" begin
     sorted_list = [MBS64{8}(UInt(i)) for i in 0:4]
-    space = HilbertSubspace(sorted_list, dict=true)
+    space = HilbertSubspace(sorted_list)
     
     vec_data = rand(ComplexF64, 5)
     mbs_vec = MBS64Vector(vec_data, space)

@@ -89,8 +89,8 @@ end
 
 # Create parameter structure for the exact diagonalization
 # This contains all the system information needed for the calculation
-para = EDPara(k_list=k_list, Gk=Gk, V_int=V_int);
-para.momentum_coordinate
+para = EDPara(k_list=k_list, Gk=Gk, H_two=V_int);
+para.two_momentum_coordinate
 
 # Create momentum blocks (Hilbert subspace)
 subspaces, ss_k1, ss_k2 = ED_momentum_subspaces(para, (Ne,));
@@ -113,12 +113,12 @@ end
 
 
 # Define the Landau level infinitesimal form factor
-function Landau_ff_inf(k_f, k_i, c=1)
-    dk = k_f .- k_i
-    k = 0.5 .* (k_f .+ k_i)
-    return -π * (k[1]*dk[2] - k[2]*dk[1])
-end
-para.FF_inf_angle = Landau_ff_inf; # Update the form factor in the parameter
+# function Landau_ff_inf(k_f, k_i, c=1)
+#     dk = k_f .- k_i
+#     k = 0.5 .* (k_f .+ k_i)
+#     return -π * (k[1]*dk[2] - k[2]*dk[1])
+# end
+# para.FF_inf_angle = Landau_ff_inf; # Update the form factor in the parameter
 
 
 

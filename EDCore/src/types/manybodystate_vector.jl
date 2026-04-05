@@ -38,7 +38,7 @@ import LinearAlgebra: dot
 # """
 # function Base.getindex(mbs_vec::MBS64Vector{bits, F}, mbs::MBS64{bits}) where {bits, F <: AbstractFloat}
 #     idx = get(mbs_vec.space, mbs)
-#     if idx == 0
+#     if !index_fit(idx, mbs_vec.space, mbs)
 #         return zero(Complex{F})
 #     else
 #         return mbs_vec.vec[idx]

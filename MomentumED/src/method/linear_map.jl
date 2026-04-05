@@ -110,8 +110,7 @@ function (A::LinearMap{bits, F})(
             amp, mbs_in = A.space.list[i] * scat
             if !iszero(amp)
                 j = get(A.space, mbs_in)
-                # @boundscheck @assert j != 0 "H is not momentum- or component-conserving."
-                j == 0 || (y[i] += amp * x[j])
+                index_fit(j, A.space, mbs_in) && (y[i] += amp * x[j])
             end
         end
     end
@@ -132,7 +131,7 @@ function (A::AdjointLinearMap{bits, F})(
             if !iszero(amp)
                 j = get(A.space, mbs_in)
                 # @boundscheck @assert j != 0 "H is not momentum- or component-conserving."
-                j == 0 || (y[i] += conj(amp) * x[j]) # adjoint operator: conj(amplitute)
+                index_fit(j, A.space, mbs_in) && (y[i] += conj(amp) * x[j]) # adjoint operator: conj(amplitute)
             end
         end
     end

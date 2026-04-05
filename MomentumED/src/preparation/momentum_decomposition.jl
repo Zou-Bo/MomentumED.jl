@@ -23,23 +23,22 @@ specified component, using combinations of orbital indices.
 
 # Example
 ```julia
-para = EDPara(k_list=[0 1; 0 0], Nc_hopping=1, Nc_conserve=1)
+para = EDPara(k_list=[0 1; 0 0], Nc_mix=1, Nc_conserve=1)
 states = ED_mbslist_onecomponent(para, 2)  # 2 particles in 2 orbitals
 ```
 """
-function mbslist_onecomponent(para::EDPara, N_in_one::Int64, start_end::Int64...)
-    Nstate = para.Nk * para.Nc_hopping
-    @assert 0 <= N_in_one <= Nstate "Invalid number of electrons in one component"
-    return ColexMBS64(Nstate, N_in_one, start_end...)
+function mbslist_onecomponent(N_one_conserve::Int64, N_in_one::Int64, start_end::Int64...)
+    @assert 0 <= N_in_one <= N_one_conserve "Invalid number of electrons in one component"
+    return ColexMBS64(N_one_conserve, N_in_one, start_end...)
 end
-function mbslist_onecomponent(para::EDPara, N_in_one::Int64, mask::Union{Nothing, Vector{Int64}}, start_end::Int64...)
-    isnothing(mask) && return mbslist_onecomponent(para, N_in_one)
-    Nstate = para.Nk * para.Nc_hopping
-    @assert 0 <= N_in_one <= Nstate "Invalid number of electrons in one component"
-    @assert isempty(mask) || 1 <= minimum(mask) && maximum(mask) <= Nstate "Invalid orbital index in mask for one component, mask=$mask, Nstate=$Nstate"
-    # return ColexMBS64Mask(Nstate, N_in_one, mask, start_end...)
-    return ColexMBS64Mask(Nstate, N_in_one, mask)
+mbslist_onecomponent(para::EDPara, N_in_one::Int64, start_end::Int64...) = mbslist_onecomponent(para.Nk * para.Nc_mix, N_in_one, start_end...)
+function mbslist_onecomponent(N_one_conserve::Int64, N_in_one::Int64, mask::Union{Nothing, Vector{Int64}}, start_end::Int64...)
+    isnothing(mask) && return mbslist_onecomponent(N_one_conserve, N_in_one, start_end...)
+    @assert 0 <= N_in_one <= N_one_conserve "Invalid number of electrons in one component"
+    @assert isempty(mask) || 1 <= minimum(mask) && maximum(mask) <= N_one_conserve "Invalid orbital index in mask for one component, mask=$mask, Nstate=$Nstate"
+    return ColexMBS64Mask(N_one_conserve, N_in_one, mask, start_end...)
 end
+mbslist_onecomponent(para::EDPara, N_in_one::Int64, mask::Union{Nothing, Vector{Int64}}, start_end::Int64...) = mbslist_onecomponent(para.Nk * para.Nc_mix, N_in_one, mask, start_end...)
 
 """
     MBS_totalmomentum(para::EDPara, mbs::MBS64)
@@ -117,7 +116,7 @@ function mbslist_recursive_iteration!(subspace_lists::Vector{Vector{MBS64{bits}}
         PRINT_RECURSIVE_MOMENTUM_DIVISION && println("Enter loop with $N_each_component. 
         Momentum $(accumulated_momentum[1]) $(accumulated_momentum[2])\n\t$accumulated_mbs\n")
         if !isnothing(mask)
-            num_component_orbitals = para.Nk * para.Nc_hopping* (length(N_each_component) - 1)
+            num_component_orbitals = para.Nk * para.Nc_mix* (length(N_each_component) - 1)
             i = searchsortedlast(mask, num_component_orbitals)
             mask_this_component = mask[i+1:end] .- num_component_orbitals
             for mbs_smaller in mbslist_onecomponent(para, abs(N_each_component[end]), mask_this_component, start_end...)
@@ -195,8 +194,7 @@ subspaces, subspace_k1, subspace_k2 = ED_momentum_subspaces(para, (1, 2))
 ```
 """
 function ED_momentum_subspaces(para::EDPara, N_each_component;
-    dict::Bool = false, index_type::Type = Int64,  momentum_restriction::Bool = false, 
-    k1range::Tuple{Int64, Int64} = (-2,2), k2range::Tuple{Int64, Int64} = (-2,2),
+    momentum_restriction::Bool = false, k1range::Tuple{Int64, Int64} = (-2,2), k2range::Tuple{Int64, Int64} = (-2,2),
     momentum_list::Vector{Tuple{Int64, Int64}} = Tuple{Int64, Int64}[],
     mask::Union{Nothing, Vector{Int64}} = nothing,
     selection_rule::Function = Returns(true)
@@ -255,7 +253,7 @@ function ED_momentum_subspaces(para::EDPara, N_each_component;
     bits = para.Nk * para.Nc
     # to generate approximated chunk division
     n_threads = Threads.nthreads()
-    n_outercomponent = binomial(para.Nk * para.Nc_hopping, abs(N_each_component[end]))
+    n_outercomponent = binomial(para.Nk * para.Nc_mix, abs(N_each_component[end]))
     n_chunks = n_outercomponent < 2n_threads ? 1 : n_threads
     if !isnothing(mask)
         n_chunks = 1
@@ -285,19 +283,13 @@ function ED_momentum_subspaces(para::EDPara, N_each_component;
             append!(list, local_list_of_lists[t][sn])
             empty!(local_list_of_lists[t][sn])
         end
-        subspaces[sn] = HilbertSubspace(list; index_type)
+        subspaces[sn] = HilbertSubspace(list)
     end
 
     empty_mask = length.(subspaces) .!= 0
     subspaces = subspaces[empty_mask]
     subspace_k1 = subspace_k1[empty_mask]
     subspace_k2 = subspace_k2[empty_mask]
-
-    if dict
-        for i in eachindex(subspaces)
-            make_dict!(subspaces[i]; index_type) 
-        end
-    end
 
     return subspaces, subspace_k1, subspace_k2
 end

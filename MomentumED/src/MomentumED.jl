@@ -15,7 +15,7 @@ export EDsolve
 # from EDCore
 export MBS64, MBOperator
 export HilbertSubspace, MBS64Vector, Scatter
-public get_bits, get_body, make_dict!, delete_dict!
+public get_bits, get_body, index_fit
 public isphysical, isupper, isdiagonal
 export ED_bracket, ED_bracket_threaded
 public ColexMBS64, ColexMBS64Mask
@@ -59,7 +59,7 @@ module MomentumED
     # from EDCore
     export MBS64, MBOperator
     export HilbertSubspace, MBS64Vector, Scatter
-    public get_bits, get_body, make_dict!, delete_dict!
+    public get_bits, get_body, index_fit
     public isphysical, isupper, isdiagonal
     export ED_bracket, ED_bracket_threaded
     public ColexMBS64, ColexMBS64Mask

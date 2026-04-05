@@ -1,6 +1,7 @@
 # todo list
 # function to transform momentum
-# update docstring due to new Scatter struct
+# update docstring
+# allow onebody function to have keyword arguments and momentum coordinate input
 
 """
     ED_sortedScatterList_onebody(para::EDPara) -> Vector{Scatter{1}}
@@ -33,30 +34,28 @@ function ED_sortedScatterList_onebody(para::EDPara; MBS_type::Type{<:MBS64} = MB
 
     Nk = para.Nk
     Nc = para.Nc
-    Nch = para.Nc_hopping
-    Ncc = para.Nc_conserve
-    @assert MBS_type == MBS64{Nc * Nk} "MBS bits has to be para.Nc*para.Nk."
+    bits = Nc * Nk
+    @assert MBS_type == MBS64{bits} "MBS bits has to be para.Nc*para.Nk."
     
     sct_list1 = Vector{Scatter{Complex{F}, MBS_type}}()
-    # Extract one-body terms from H1[ch1, ch2, cc, k]
-    for ch1 in 1:Nch, ch2 in 1:Nch, cc in 1:Ncc, k in 1:Nk
-        V = para.H_onebody[ch1, ch2, cc, k] |> Complex{F}
-        if !iszero(V)
-            # Map component indices to global orbital indices
-            i_ot = k + Nk * (ch1 - 1) + Nk * Nch * (cc - 1)  # output orbital
-            i_in = k + Nk * (ch2 - 1) + Nk * Nch * (cc - 1)  # input orbital
+    # Extract one-body terms from H_one(kf, ki, cf, ci) and convert to Scatter terms
+    if para.one_momentum_coordinate
+        for ci in 1:Nc, cf in 1:Nc, ki in 1:Nk, kf in 1:Nk
+            V = para.H_one(kf, ki, cf, ci) |> Complex{F}
+            if !iszero(V)
+                # Map component indices to global orbital indices
+                i_out = kf + Nk * (cf - 1)  # output orbital
+                i_in = ki + Nk * (ci - 1)  # input orbital
 
-            # Create Scatter term with normal ordering
-            i_in >= i_ot && push!(sct_list1, Scatter(V, i_ot, i_in; 
-                bits = Nc * Nk, upper_hermitian = true
-            ))
+                # Create Scatter term with normal ordering
+                i_in >= i_out && push!(sct_list1, Scatter(V, i_out, i_in; bits, upper_hermitian = true))
+            end
         end
+    else
+        error("H_one currently only supports momentum coordinate.")
     end
-    
     return sort_merge_scatlist(sct_list1)
 end
-
-
 
 """
     group_momentum_pairs(para::EDPara) -> Dict{Tuple{Int64,Int64}, Vector{Tuple{Int64,Int64}}}
@@ -190,11 +189,11 @@ function scat_pair_group_coordinate(pair_group::Vector{Tuple{Int64,Int64}}, para
             i2 = ki2 + Nk * (ci2 - 1)
 
             # conserved component index determines momentum shift
-            # component_index = ch_index + Nc_hopping * (cc_index - 1)
-            ccf1 = fld1(cf1, para.Nc_hopping)
-            ccf2 = fld1(cf2, para.Nc_hopping)
-            cci2 = fld1(ci2, para.Nc_hopping)
-            cci1 = fld1(ci1, para.Nc_hopping)
+            # component_index = cm_index + Nc_mix * (cc_index - 1)
+            ccf1 = fld1(cf1, para.Nc_mix)
+            ccf2 = fld1(cf2, para.Nc_mix)
+            cci2 = fld1(ci2, para.Nc_mix)
+            cci1 = fld1(ci1, para.Nc_mix)
 
             # no duplicate input/output indices
             if i1 == i2 || f1 == f2
@@ -368,11 +367,11 @@ Scatter2_shifted = ED_sortedScatterList_twobody(para; kshift=(0.1, 0.1))
 function ED_sortedScatterList_twobody(para::EDPara; MBS_type::Type{<:MBS64} = MBS64{para.Nc*para.Nk},
     momentum_transformation::Union{Nothing, Function} = nothing, element_type::Type{F} = Float64,
     replace_interaction::Union{Nothing, Function} = nothing, 
-    rep_int_use_momentum_coordinate::Bool = para.momentum_coordinate,
+    rep_int_use_momentum_coordinate::Bool = para.two_momentum_coordinate,
     kshift = nothing, int_kwargs... )::Vector{Scatter{Complex{F}, MBS_type}} where{F <: AbstractFloat}
 
     if isnothing(replace_interaction)
-        replace_interaction = para.V_int
+        replace_interaction = para.H_two
     end
 
     momentum_groups = group_momentum_pairs(para; momentum_transformation)
