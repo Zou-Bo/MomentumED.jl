@@ -53,7 +53,7 @@ length(space::HilbertSubspace) = space.length
 Displays a human-readable representation of the HilbertSubspace, including its bit size, dimension, and whether a dictionary is present.
 """
 function Base.show(io::IO, ::MIME"text/plain", space::HilbertSubspace{bits}) where {bits}
-    println(io, "Hilbert subspace {bits = $bits, dim = $(space.length)}, dict = $(!isempty(space.dict))")
+    println(io, "Hilbert subspace {bits = $bits, dim = $(space.length)}")
     show(io, MIME("text/plain"), space.list)
 end
 

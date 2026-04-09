@@ -1,5 +1,3 @@
-# to-do: allow starting and ending positions for ColexMBS64Mask
-
 # directly find the k-th state in colex(n, t) without iteration
 function unrank_colex(n::Int64, t::Int64, k::Int64)::Vector{Int64}
     t == 0 && return Int64[]

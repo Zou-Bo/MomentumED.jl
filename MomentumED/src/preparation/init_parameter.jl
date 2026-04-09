@@ -57,10 +57,10 @@ The "-1" is due to 1-based indexing in Julia.
 - The total number of orbitals (`Nk * Nc`) must not exceed 64.
 - The provided `H_one` and `H_two` functions must conform to one of the valid signatures. 
 """
-struct EDPara{H1, H2}
-    # momemta are in integers
+mutable struct EDPara{H1, H2}
 
-    # k_list[:, i] = (k_x, k_y)
+    # momemta are in integers
+    # k_list[:, index_k] = (k_x, k_y)
     k_list::Matrix{Int64}
     # G integer (momentum integer is conserved mod G; where G=0 means no mod)
     Gk::Tuple{Int64, Int64}
