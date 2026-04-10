@@ -31,6 +31,27 @@ end
     end
     return klist, kshift
 end
+@inline function shift_decipher(kshift, Ncc)
+    if isnothing(kshift)
+        shifts = zeros(Int64, 2, Ncc)
+    elseif kshift isa Tuple
+        shifts = Matrix{eltype(kshift)}(undef, 2, Ncc)
+        shifts[1,:] .= kshift[1]
+        shifts[2,:] .= kshift[2]
+    elseif kshift isa Vector
+        @assert length(kshift) == Ncc "length of kshift isn't equal to para.Nc_conserve."
+        shifts = Matrix{eltype(kshift[1])}(undef, 2, Ncc)
+        for i in 1:Ncc
+            shifts[:,i] .= kshift[i]
+        end
+    elseif kshift isa Matrix
+        @assert size(kshift) == (2, Ncc) "size of kshift isn't equal to para.Nc_conserve."
+        shifts = kshift
+    else
+        throw(AssertionError("kshift could be nothing, Tuple{R,R}, Vector{Tuple{R,R}}, or Matrix{R}, where R<:Real."))
+    end
+    return shifts
+end
 
 """
     ED_sortedScatterList_onebody(para::EDPara) -> Vector{Scatter{1}}
@@ -60,17 +81,22 @@ Scatter1 = ED_sortedScatterList_onebody(para)
 """
 function ED_sortedScatterList_onebody(para::EDPara; 
     MBS_type::Type{MBS} = MBS64{para.Nc*para.Nk}, element_type::Type{F} = Float64,
-    shifts::Matrix{T}, kwargs... 
-    )::Vector{Scatter{Complex{F}, MBS}} where{T <: Real, F <: AbstractFloat, MBS <: MBS64}
+    kshift = nothing, kwargs... 
+    )::Vector{Scatter{Complex{F}, MBS}} where{ F <: AbstractFloat, MBS <: MBS64}
 
     Nk = para.Nk
     Nc = para.Nc
+    Ncc = para.Nc_conserve
+    Ncm = para.Nc_mix
     bits = Nc * Nk
     @assert MBS_type == MBS64{bits} "MBS bits has to be para.Nc*para.Nk."
     
     sct_list1 = Vector{Scatter{Complex{F}, MBS_type}}()
-    # Extract one-body terms from H_one(kf, ki, cf, ci) and convert to Scatter terms
+    # Extract one-body terms from H_one(k, cf, ci) and convert to Scatter terms
     if para.one_momentum_coordinate
+
+        shifts = shift_decipher(kshift, Ncc)
+        T = eltype(shifts)
 
         if T <: Integer || T <: Rational
             klist, kshift = shifted_k_coordinate_rational(para, shifts)
@@ -78,17 +104,16 @@ function ED_sortedScatterList_onebody(para::EDPara;
             klist, kshift = shifted_k_coordinate_float(para, shifts)
         end
 
-        for ci in 1:Nc, cf in 1:Nc, 
-            ccf = fld1(cf, para.Nc_mix)
-            cci = fld1(ci, para.Nc_mix)
-            for ki in 1:Nk, kf in 1:Nk
+        for cc in 1:Ncc, cmi in 1:Ncm, cmf in 1:Ncm, 
+            cf = cmf + (cc - 1) * Ncm 
+            ci = cmi + (cc - 1) * Ncm 
+            for k in 1:Nk
                 # Map component indices to global orbital indices
-                i_out = kf + Nk * (cf - 1)  # output orbital
-                i_in = ki + Nk * (ci - 1)  # input orbital
+                i_out = k + Nk * (cf - 1)  # output orbital
+                i_in  = k + Nk * (ci - 1)  #  input orbital
                 if i_in >= i_out
                     V = para.H_one(
-                        (klist[1, kf] + kshift[1, ccf], klist[2, kf] + kshift[2, ccf]),
-                        (klist[1, ki] + kshift[1, cci], klist[2, ki] + kshift[2, cci]),
+                        (klist[1, k] + kshift[1, cc], klist[2, k] + kshift[2, cc]),
                         cf, ci; kwargs... 
                     ) |> Complex{F}
                     iszero(V) || push!(sct_list1, Scatter(V, i_out, i_in; bits, upper_hermitian = true))
@@ -96,13 +121,17 @@ function ED_sortedScatterList_onebody(para::EDPara;
             end
         end
     else
-        for ci in 1:Nc, cf in 1:Nc, ki in 1:Nk, kf in 1:Nk
-            # Map component indices to global orbital indices
-            i_out = kf + Nk * (cf - 1)  # output orbital
-            i_in = ki + Nk * (ci - 1)  # input orbital
-            if i_in >= i_out
-                V = para.H_one(kf, ki, cf, ci; kwargs...) |> Complex{F}
-                iszero(V) || push!(sct_list1, Scatter(V, i_out, i_in; bits, upper_hermitian = true))
+        for cc in 1:Ncc, cmi in 1:Ncm, cmf in 1:Ncm, 
+            cf = cmf + (cc - 1) * Ncm 
+            ci = cmi + (cc - 1) * Ncm 
+            for k in 1:Nk
+                # Map component indices to global orbital indices
+                i_out = k + Nk * (cf - 1)  # output orbital
+                i_in  = k + Nk * (ci - 1)  #  input orbital
+                if i_in >= i_out
+                    V = para.H_one(k, cf, ci; kwargs...) |> Complex{F}
+                    iszero(V) || push!(sct_list1, Scatter(V, i_out, i_in; bits, upper_hermitian = true))
+                end
             end
         end
     end
@@ -203,28 +232,8 @@ function scat_pair_group_coordinate!(scatter_list::Vector{Scatter{Complex{F}, MB
     sys_size = (Gk1 != 0 && Gk2 != 0) ? Nk : 1
 
     if T <: Integer || T <: Rational
-        # klist = copy(para.k_list) // 1
-        # kshift = copy(shifts) // 1
-        # if Gk1 != 0
-        #     klist[1, :] .//= Gk1
-        #     kshift[1, :] .//= Gk1
-        # end
-        # if Gk2 != 0
-        #     klist[2, :] .//= Gk2
-        #     kshift[2, :] .//= Gk2
-        # end
         klist, kshift = shifted_k_coordinate_rational(para, shifts)
     else
-        # klist = float.(copy(para.k_list))
-        # kshift = float.(copy(shifts))
-        # if Gk1 != 0
-        #     klist[1, :] ./= Gk1
-        #     kshift[1, :] ./= Gk1
-        # end
-        # if Gk2 != 0
-        #     klist[2, :] ./= Gk2
-        #     kshift[2, :] ./= Gk2
-        # end
         klist, kshift = shifted_k_coordinate_float(para, shifts)
     end
 
@@ -433,24 +442,26 @@ function ED_sortedScatterList_twobody(para::EDPara; MBS_type::Type{<:MBS64} = MB
     sct_list2 = Vector{Scatter{Complex{F}, MBS_type}}()
     if rep_int_use_momentum_coordinate
 
-        if isnothing(kshift)
-            shifts = zeros(Int64, 2, para.Nc_conserve)
-        elseif kshift isa Tuple
-            shifts = Matrix{eltype(kshift)}(undef, 2, para.Nc_conserve)
-            shifts[1,:] .= kshift[1]
-            shifts[2,:] .= kshift[2]
-        elseif kshift isa Vector
-            @assert length(kshift) == para.Nc_conserve "length of kshift isn't equal to para.Nc_conserve."
-            shifts = Matrix{eltype(kshift[1])}(undef, 2, para.Nc_conserve)
-            for i in 1:para.Nc_conserve
-                shifts[:,i] .= kshift[i]
-            end
-        elseif kshift isa Matrix
-            @assert size(kshift) == (2, para.Nc_conserve) "size of kshift isn't equal to para.Nc_conserve."
-            shifts = kshift
-        else
-            throw(AssertionError("kshift could be nothing, Tuple{R,R}, Vector{Tuple{R,R}}, or Matrix{R}, where R<:Real."))
-        end
+        # if isnothing(kshift)
+        #     shifts = zeros(Int64, 2, para.Nc_conserve)
+        # elseif kshift isa Tuple
+        #     shifts = Matrix{eltype(kshift)}(undef, 2, para.Nc_conserve)
+        #     shifts[1,:] .= kshift[1]
+        #     shifts[2,:] .= kshift[2]
+        # elseif kshift isa Vector
+        #     @assert length(kshift) == para.Nc_conserve "length of kshift isn't equal to para.Nc_conserve."
+        #     shifts = Matrix{eltype(kshift[1])}(undef, 2, para.Nc_conserve)
+        #     for i in 1:para.Nc_conserve
+        #         shifts[:,i] .= kshift[i]
+        #     end
+        # elseif kshift isa Matrix
+        #     @assert size(kshift) == (2, para.Nc_conserve) "size of kshift isn't equal to para.Nc_conserve."
+        #     shifts = kshift
+        # else
+        #     throw(AssertionError("kshift could be nothing, Tuple{R,R}, Vector{Tuple{R,R}}, or Matrix{R}, where R<:Real."))
+        # end
+
+        shifts = shift_decipher(kshift, para.Nc_conserve)
 
         for (K_total, pairs) in momentum_groups
             scat_pair_group_coordinate!(sct_list2, pairs, para; shifts, element_type, V_int = replace_interaction, int_kwargs...)

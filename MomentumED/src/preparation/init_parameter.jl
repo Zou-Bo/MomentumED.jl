@@ -7,15 +7,17 @@
 """
 
 """
-    mutable struct EDPara
+    mutable struct EDPara{dim, H1, H2}
 
 Stores all parameters for a momentum-conserved exact diagonalization calculation.
+Integer `dim` indicates spatial dimension, default to be 2.
+`H1` and `H2` are types of callable objects to give the one-body and two-body terms, respectively.
 
 # Constructor
 
-    EDPara(; 
+    EDPara(;
         k_list::Matrix{Int64},
-        Gk::Tuple{Int64, Int64} = (0, 0), 
+        Gk::NTuple{dim, Int64}, 
         Nc_mix::Int64 = 1,
         Nc_conserve::Int64 = 1,
         H_one = (kf, ki, cf, ci) -> 0.0 + 0.0im,
@@ -23,8 +25,8 @@ Stores all parameters for a momentum-conserved exact diagonalization calculation
     )
 
 # Keyword Arguments
-- `k_list::Matrix{Int64}`: **Required**. A matrix where each column `k_list[:, i]` represents a momentum vector `(k_x, k_y)`.
-- `Gk::Tuple{Int64, Int64} = (0, 0)`: The reciprocal lattice vectors `(G1, G2)`. Momentum is conserved modulo `Gk`. A value of `0` means no periodicity in that direction.
+- `k_list::Matrix{Int64}`: **Required**. A `dim`×`Nk` matrix where each column `k_list[:, i]` represents a momentum vector.
+- `Gk::NTuple{dim, Int64}`: **Required**. The reciprocal lattice vectors `(G1, G2)`. Momentum is conserved modulo `Gk`. A value of `0` means no periodicity in that direction.
 - `Nc_mix::Int64 = 1`: The number of "hopping" components whose particle numbers are not conserved.
 - `Nc_conserve::Int64 = 1`: The number of components where the particle number is conserved (e.g., valley).
 - `H_one`: A function or callable object that generates the one-body part of the Hamiltonian. Defaults to zero.
@@ -57,13 +59,13 @@ The "-1" is due to 1-based indexing in Julia.
 - The total number of orbitals (`Nk * Nc`) must not exceed 64.
 - The provided `H_one` and `H_two` functions must conform to one of the valid signatures. 
 """
-mutable struct EDPara{H1, H2}
+mutable struct EDPara{dim, H1, H2}
 
     # momemta are in integers
     # k_list[:, index_k] = (k_x, k_y)
     k_list::Matrix{Int64}
     # G integer (momentum integer is conserved mod G; where G=0 means no mod)
-    Gk::Tuple{Int64, Int64}
+    Gk::NTuple{dim, Int64}
 
     Nk::Int64 # number of momenta
     Nc_mix::Int64 # number of components that will be mixed by Hamiltonian (not conserved)
@@ -77,14 +79,14 @@ mutable struct EDPara{H1, H2}
 
     function EDPara(; 
         k_list::Matrix{Int64},
-        Gk::Tuple{Int64, Int64} = (0, 0), 
+        Gk::NTuple{dim, Int64}, 
         Nc_mix::Int64 = 1,
         Nc_conserve::Int64 = 1,
         H_one::H1 = Returns(0.0 + 0.0im),
         H_two::H2 = Returns(0.0 + 0.0im),
         one_momentum_coordinate::Union{Nothing, Bool} = nothing,
         two_momentum_coordinate::Union{Nothing, Bool} = nothing,
-    ) where {H1, H2}
+    ) where {dim, H1, H2}
 
         # Calculate derived fields
         Nk = size(k_list, 2)
@@ -97,22 +99,22 @@ mutable struct EDPara{H1, H2}
         # Validate H_one function signature - accept Tuple{<:Real,<:Real} or Int64 momentum format
         if !isnothing(one_momentum_coordinate)
             if one_momentum_coordinate
-                @assert hasmethod(H_one, Tuple{Tuple{<:Real,<:Real}, Tuple{<:Real,<:Real}, Int64, Int64}) "H_one is expected to accept (kf::Tuple{<:Real,<:Real}, ki::Tuple{<:Real,<:Real}, cf::Int64, ci::Int64), but H_one does not have the correct method signature."
+                @assert hasmethod(H_one, Tuple{Tuple{<:Real,<:Real}, Int64, Int64}) "H_one is expected to accept (k::Tuple{<:Real,<:Real}, cf::Int64, ci::Int64), but H_one does not have the correct method signature."
             else
-                @assert hasmethod(H_one, Tuple{Int64, Int64, Int64, Int64}) "H_one is expected to accept (kf::Int64, ki::Int64, cf::Int64, ci::Int64), but H_one does not have the correct method signature."
+                @assert hasmethod(H_one, Tuple{Int64, Int64, Int64}) "H_one is expected to accept (k::Int64, cf::Int64, ci::Int64), but H_one does not have the correct method signature."
             end
         else
-            if hasmethod(H_one, Tuple{Tuple{<:Real,<:Real}, Tuple{<:Real,<:Real}, Int64, Int64})
+            if hasmethod(H_one, Tuple{Tuple{<:Real,<:Real}, Int64, Int64})
                 one_momentum_coordinate = true
-            elseif hasmethod(H_one, Tuple{Int64, Int64, Int64, Int64})
+            elseif hasmethod(H_one, Tuple{Int64, Int64, Int64})
                 one_momentum_coordinate = false
             else
                 throw(AssertionError("""
                 H_one function must accept 4 arguments:
-                    either (kf::Tuple{<:Real,<:Real}, ki::Tuple{<:Real,<:Real}, cf::Int64, ci::Int64)
-                    or (kf::Int64, ki::Int64, cf::Int64, ci::Int64);
+                    either (k::Tuple{<:Real,<:Real}, cf::Int64, ci::Int64)
+                    or (k::Int64, cf::Int64, ci::Int64);
                 and return a complex number.
-                Current function fails to give H_one((0.0,0.0), (0.0,0.0), 1, 1) or H_one(1, 1, 1, 1)
+                Current function fails to give H_one((0.0,0.0), 1, 1) or H_one(1, 1, 1)
                 """))
             end
         end
@@ -140,7 +142,7 @@ mutable struct EDPara{H1, H2}
             end
         end
 
-        new{H1, H2}(k_list, Gk, Nk, Nc_mix, Nc_conserve, Nc, H_one, one_momentum_coordinate, H_two, two_momentum_coordinate)
+        new{dim, H1, H2}(k_list, Gk, Nk, Nc_mix, Nc_conserve, Nc, H_one, one_momentum_coordinate, H_two, two_momentum_coordinate)
     end
 end
 
