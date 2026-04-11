@@ -22,8 +22,8 @@ public ColexMBS64, ColexMBS64Mask
 
 # preparation
 export EDPara, ED_momentum_subspaces
-export ED_sortedScatterList_onebody
-export ED_sortedScatterList_twobody
+export ED_scatterlist_onebody
+export ED_scatterlist_twobody
 
 # methods
 public SparseHmltMatrix, LinearMap
@@ -66,8 +66,8 @@ module MomentumED
 
     # preparation
     export EDPara, ED_momentum_subspaces
-    export ED_sortedScatterList_onebody
-    export ED_sortedScatterList_twobody
+    export ED_scatterlist_onebody
+    export ED_scatterlist_twobody
 
     # methods
     public SparseHmltMatrix, LinearMap
@@ -95,8 +95,8 @@ module MomentumED
     """
     module Preparation
         export EDPara, ED_momentum_subspaces
-        export ED_sortedScatterList_onebody
-        export ED_sortedScatterList_twobody
+        export ED_scatterlist_onebody
+        export ED_scatterlist_twobody
 
         import ..MomentumED.PRINT_RECURSIVE_MOMENTUM_DIVISION
         import ..MomentumED.PRINT_TWOBODY_SCATTER_PAIRS
@@ -171,8 +171,8 @@ module MomentumED
     **1. Using Scatter Lists (Sparse Matrix Method):**
     ```julia
     subspaces, _, _ = ED_momentum_subspaces(para, (1,1))
-    scat1 = ED_sortedScatterList_onebody(para)
-    scat2 = ED_sortedScatterList_twobody(para)
+    scat1 = ED_scatterlist_onebody(para)
+    scat2 = ED_scatterlist_twobody(para)
 
     # Find the 2 lowest energy states
     energies, vecs = EDsolve(subspaces[1], scat1, scat2; N=2, method=:sparse)

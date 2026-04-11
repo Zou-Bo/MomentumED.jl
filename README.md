@@ -125,8 +125,8 @@ para = EDPara(k_list=k_list, Gk=Gk, Nc_hopping=Nc_hopping, Nc_conserve=Nc_conser
 subspaces, subspace_k1, subspace_k2 = ED_momentum_subspaces(para, (4,))
 
 # Generate Scatter lists
-scat_list1 = ED_sortedScatterList_onebody(para)
-scat_list2 = ED_sortedScatterList_twobody(para)
+scat_list1 = ED_scatterlist_onebody(para)
+scat_list2 = ED_scatterlist_twobody(para)
 
 # Solve the first momentum block for the 5 lowest eigenenergies
 energies, eigenvectors = EDsolve(subspaces[1], scat_list1, scat_list2; N=5)
@@ -150,8 +150,8 @@ The public API is organized into several categories, reflecting the typical work
 
 - **`EDPara`**: A struct that holds all parameters for a calculation (k-list, interaction functions, etc.).
 - **`ED_momentum_subspaces`**: Generates the basis states, automatically partitioning them into `HilbertSubspace` objects based on total momentum.
-- **`ED_sortedScatterList_onebody`**: Creates the one-body part of the Hamiltonian as a list of `Scatter{1}` terms.
-- **`ED_sortedScatterList_twobody`**: Creates the two-body part of the Hamiltonian as a list of `Scatter{2}` terms.
+- **`ED_scatterlist_onebody`**: Creates the one-body part of the Hamiltonian as a list of `Scatter{1}` terms.
+- **`ED_scatterlist_twobody`**: Creates the two-body part of the Hamiltonian as a list of `Scatter{2}` terms.
 
 ### Eigensolver
 

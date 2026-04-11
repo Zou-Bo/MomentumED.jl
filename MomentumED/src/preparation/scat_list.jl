@@ -1,7 +1,6 @@
 # todo list
 # function to transform momentum
 # update docstring
-# allow onebody function to have keyword arguments and momentum coordinate input
 
 @inline function shifted_k_coordinate_rational(para::EDPara, shifts::Matrix)
     klist = para.k_list .// 1
@@ -54,7 +53,7 @@ end
 end
 
 """
-    ED_sortedScatterList_onebody(para::EDPara) -> Vector{Scatter{1}}
+    ED_scatterlist_onebody(para::EDPara) -> Vector{Scatter{1}}
 
 Generate sorted lists of one-body Scatter terms from the parameters.
 
@@ -76,12 +75,12 @@ them to Scatter terms with proper normal ordering.
 # Example
 ```julia
 para = EDPara(k_list=k_list, Gk=(3, 5), V_int=V_int)
-Scatter1 = ED_sortedScatterList_onebody(para)
+Scatter1 = ED_scatterlist_onebody(para)
 ```
 """
-function ED_sortedScatterList_onebody(para::EDPara; 
+function ED_scatterlist_onebody(para::EDPara; 
     MBS_type::Type{MBS} = MBS64{para.Nc*para.Nk}, element_type::Type{F} = Float64,
-    kshift = nothing, kwargs... 
+    kshift = nothing, H_one::NamedTuple = NamedTuple()
     )::Vector{Scatter{Complex{F}, MBS}} where{ F <: AbstractFloat, MBS <: MBS64}
 
     Nk = para.Nk
@@ -114,13 +113,18 @@ function ED_sortedScatterList_onebody(para::EDPara;
                 if i_in >= i_out
                     V = para.H_one(
                         (klist[1, k] + kshift[1, cc], klist[2, k] + kshift[2, cc]),
-                        cf, ci; kwargs... 
+                        cf, ci; H_one... 
                     ) |> Complex{F}
                     iszero(V) || push!(sct_list1, Scatter(V, i_out, i_in; bits, upper_hermitian = true))
                 end
             end
         end
     else
+
+        if !isnothing(kshift)
+            @warn "kshift is ignored when para.H_one accepts momentum indices instead of coordinates."
+        end
+
         for cc in 1:Ncc, cmi in 1:Ncm, cmf in 1:Ncm, 
             cf = cmf + (cc - 1) * Ncm 
             ci = cmi + (cc - 1) * Ncm 
@@ -129,7 +133,7 @@ function ED_sortedScatterList_onebody(para::EDPara;
                 i_out = k + Nk * (cf - 1)  # output orbital
                 i_in  = k + Nk * (ci - 1)  #  input orbital
                 if i_in >= i_out
-                    V = para.H_one(k, cf, ci; kwargs...) |> Complex{F}
+                    V = para.H_one(k, cf, ci; H_one...) |> Complex{F}
                     iszero(V) || push!(sct_list1, Scatter(V, i_out, i_in; bits, upper_hermitian = true))
                 end
             end
@@ -219,15 +223,14 @@ This internal function uses an interaction function `V_int` that accepts momentu
 - Includes both direct (`V(f1,f2,i2,i1)`) and exchange (`V(f1,f2,i1,i2)`) contributions.
 """
 function scat_pair_group_coordinate!(scatter_list::Vector{Scatter{Complex{F}, MBS}},
-    pair_group::Vector{Tuple{Int64,Int64}}, para::EDPara;
-    MBS_type::Type{MBS} = MBS64{para.Nc*para.Nk}, element_type::Type{F},
-    shifts::Matrix{T}, V_int, int_kwargs... 
-    )::Vector{Scatter{Complex{F}, MBS}} where {T <: Real, F <: AbstractFloat, MBS <: MBS64}
+    pair_group::Vector{Tuple{Int64,Int64}}, para::EDPara; element_type::Type{F},
+    shifts::Matrix{T}, H_two::NamedTuple = NamedTuple() ) where {T <: Real, F <: AbstractFloat, MBS <: MBS64}
     
     # @assert size(shifts) == (2, para.Nc_conserve)
 
-    Nc = para.Nc
     Nk = para.Nk
+    Nc = para.Nc
+    Ncm = para.Nc_mix
     Gk1, Gk2 = para.Gk
     sys_size = (Gk1 != 0 && Gk2 != 0) ? Nk : 1
 
@@ -245,7 +248,7 @@ function scat_pair_group_coordinate!(scatter_list::Vector{Scatter{Complex{F}, MB
         for ci1 in 1:Nc, ci2 in 1:Nc, cf1 in 1:Nc, cf2 in 1:Nc
             
             # Map to global orbital indices
-            # Global index = momentum_index + Nk * (component_index - 1)
+            # Full index = momentum_index + Nk * (component_index - 1)
             f1 = kf1 + Nk * (cf1 - 1)
             f2 = kf2 + Nk * (cf2 - 1)
             i1 = ki1 + Nk * (ci1 - 1)
@@ -253,10 +256,10 @@ function scat_pair_group_coordinate!(scatter_list::Vector{Scatter{Complex{F}, MB
 
             # conserved component index determines momentum shift
             # component_index = cm_index + Nc_mix * (cc_index - 1)
-            ccf1 = fld1(cf1, para.Nc_mix)
-            ccf2 = fld1(cf2, para.Nc_mix)
-            cci2 = fld1(ci2, para.Nc_mix)
-            cci1 = fld1(ci1, para.Nc_mix)
+            ccf1 = fld1(cf1, Ncm)
+            ccf2 = fld1(cf2, Ncm)
+            cci2 = fld1(ci2, Ncm)
+            cci1 = fld1(ci1, Ncm)
 
             # no duplicate input/output indices
             if i1 == i2 || f1 == f2
@@ -276,35 +279,32 @@ function scat_pair_group_coordinate!(scatter_list::Vector{Scatter{Complex{F}, MB
 
                 # Calculate the direct and exchange amplitudes
                 PRINT_TWOBODY_SCATTER_PAIRS && print(fldmod1(i1, Nk), fldmod1(i2, Nk), fldmod1(f1, Nk), fldmod1(f2, Nk),"        ")
-                amp_direct = V_int(
+                amp_direct = para.H_two(
                     (klist[1, kf1] + kshift[1, ccf1], klist[2, kf1] + kshift[2, ccf1]),
                     (klist[1, kf2] + kshift[1, ccf2], klist[2, kf2] + kshift[2, ccf2]),
                     (klist[1, ki2] + kshift[1, cci2], klist[2, ki2] + kshift[2, cci2]),
                     (klist[1, ki1] + kshift[1, cci1], klist[2, ki1] + kshift[2, cci1]),
-                    cf1, cf2, ci2, ci1; int_kwargs...
+                    cf1, cf2, ci2, ci1; H_two...
                 ) |> Complex{F}
 
                 # exchange i1 and i2
                 PRINT_TWOBODY_SCATTER_PAIRS && print(fldmod1(i2, Nk), fldmod1(i1, Nk), fldmod1(f1, Nk), fldmod1(f2, Nk))
-                amp_exchange = V_int(
+                amp_exchange = para.H_two(
                     (klist[1, kf1] + kshift[1, ccf1], klist[2, kf1] + kshift[2, ccf1]),
                     (klist[1, kf2] + kshift[1, ccf2], klist[2, kf2] + kshift[2, ccf2]),
                     (klist[1, ki1] + kshift[1, cci1], klist[2, ki1] + kshift[2, cci1]),
                     (klist[1, ki2] + kshift[1, cci2], klist[2, ki2] + kshift[2, cci2]),
-                    cf1, cf2, ci1, ci2; int_kwargs...
+                    cf1, cf2, ci1, ci2; H_two...
                 ) |> Complex{F}
 
                 amp = (amp_direct - amp_exchange) / sys_size
                 iszero(amp) || push!(scatter_list, Scatter(amp, f1, f2, i2, i1; 
-                    upper_hermitian = true, bits = para.Nc * para.Nk
+                    upper_hermitian = true, bits = Nc * Nk
                 ))
                 PRINT_TWOBODY_SCATTER_PAIRS && println()
             end
-        
         end
     end
-    
-    return scatter_list
 end
 
 """
@@ -327,9 +327,8 @@ This internal function uses an interaction function `V_int` that accepts momentu
 - Applies normal ordering and calculates direct and exchange amplitudes.
 """
 function scat_pair_group_index!(scatter_list::Vector{Scatter{Complex{F}, MBS}},
-    pair_group::Vector{Tuple{Int64,Int64}}, para::EDPara;
-    MBS_type::Type{<:MBS64} = MBS64{para.Nc*para.Nk}, element_type::Type{F},
-    V_int, int_kwargs... )::Vector{Scatter{Complex{F}, MBS}} where{F <: AbstractFloat, MBS <: MBS64}
+    pair_group::Vector{Tuple{Int64,Int64}}, para::EDPara; element_type::Type{F},
+    H_two::NamedTuple = NamedTuple() ) where{F <: AbstractFloat, MBS <: MBS64}
     
     Nc = para.Nc
     Nk = para.Nk
@@ -368,33 +367,30 @@ function scat_pair_group_index!(scatter_list::Vector{Scatter{Complex{F}, MBS}},
 
                 # Calculate the direct and exchange amplitudes
                 PRINT_TWOBODY_SCATTER_PAIRS && print(fldmod1(i1, Nk), fldmod1(i2, Nk), fldmod1(f1, Nk), fldmod1(f2, Nk),"        ")
-                amp_direct = V_int(
+                amp_direct = para.H_two(
                     kf1, kf2, ki2, ki1,
-                    cf1, cf2, ci2, ci1; int_kwargs...
+                    cf1, cf2, ci2, ci1; H_two...
                 ) |> Complex{F}
 
                 # exchange i1 and i2
                 PRINT_TWOBODY_SCATTER_PAIRS && print(fldmod1(i2, Nk), fldmod1(i1, Nk), fldmod1(f1, Nk), fldmod1(f2, Nk))
-                amp_exchange = V_int(
+                amp_exchange = para.H_two(
                     kf1, kf2, ki1, ki2,
-                    cf1, cf2, ci1, ci2; int_kwargs...
+                    cf1, cf2, ci1, ci2; H_two...
                 ) |> Complex{F}
 
                 amp = (amp_direct - amp_exchange) / sys_size
                 iszero(amp) || push!(scatter_list, Scatter(amp, f1, f2, i2, i1; 
-                    upper_hermitian = true, bits = para.Nc*para.Nk
+                    upper_hermitian = true, bits = Nc * Nk
                 ))
                 PRINT_TWOBODY_SCATTER_PAIRS && println()
             end
-        
         end
     end
-    
-    return scatter_list
 end
 
 """
-    ED_sortedScatterList_twobody(para::EDPara; kshift=nothing) -> Vector{Scatter{2}}
+    ED_scatterlist_twobody(para::EDPara; kshift=nothing) -> Vector{Scatter{2}}
 
 Generate a sorted list of two-body `Scatter` terms from the interaction potential.
 
@@ -422,57 +418,32 @@ This function orchestrates the generation of all two-body scattering terms. It f
 ```julia
 para = EDPara(k_list=k_list, Gk=(3, 5), V_int=V_int)
 # Generate with no momentum shift
-Scatter2 = ED_sortedScatterList_twobody(para)
+Scatter2 = ED_scatterlist_twobody(para)
 # Generate with a uniform twisted boundary condition
-Scatter2_shifted = ED_sortedScatterList_twobody(para; kshift=(0.1, 0.1))
+Scatter2_shifted = ED_scatterlist_twobody(para; kshift=(0.1, 0.1))
 ```
 """
-function ED_sortedScatterList_twobody(para::EDPara; MBS_type::Type{<:MBS64} = MBS64{para.Nc*para.Nk},
+function ED_scatterlist_twobody(para::EDPara; MBS_type::Type{<:MBS64} = MBS64{para.Nc*para.Nk},
     momentum_transformation::Union{Nothing, Function} = nothing, element_type::Type{F} = Float64,
-    replace_interaction::Union{Nothing, Function} = nothing, 
-    rep_int_use_momentum_coordinate::Bool = para.two_momentum_coordinate,
-    kshift = nothing, int_kwargs... )::Vector{Scatter{Complex{F}, MBS_type}} where{F <: AbstractFloat}
+    kshift = nothing, H_two::NamedTuple = NamedTuple() )::Vector{Scatter{Complex{F}, MBS_type}} where{F <: AbstractFloat}
 
-    if isnothing(replace_interaction)
-        replace_interaction = para.H_two
-    end
+    bits = para.Nc * para.Nk
+    @assert MBS_type == MBS64{bits} "MBS bits has to be para.Nc*para.Nk."
 
     momentum_groups = group_momentum_pairs(para; momentum_transformation)
     
     sct_list2 = Vector{Scatter{Complex{F}, MBS_type}}()
-    if rep_int_use_momentum_coordinate
-
-        # if isnothing(kshift)
-        #     shifts = zeros(Int64, 2, para.Nc_conserve)
-        # elseif kshift isa Tuple
-        #     shifts = Matrix{eltype(kshift)}(undef, 2, para.Nc_conserve)
-        #     shifts[1,:] .= kshift[1]
-        #     shifts[2,:] .= kshift[2]
-        # elseif kshift isa Vector
-        #     @assert length(kshift) == para.Nc_conserve "length of kshift isn't equal to para.Nc_conserve."
-        #     shifts = Matrix{eltype(kshift[1])}(undef, 2, para.Nc_conserve)
-        #     for i in 1:para.Nc_conserve
-        #         shifts[:,i] .= kshift[i]
-        #     end
-        # elseif kshift isa Matrix
-        #     @assert size(kshift) == (2, para.Nc_conserve) "size of kshift isn't equal to para.Nc_conserve."
-        #     shifts = kshift
-        # else
-        #     throw(AssertionError("kshift could be nothing, Tuple{R,R}, Vector{Tuple{R,R}}, or Matrix{R}, where R<:Real."))
-        # end
-
+    if para.two_momentum_coordinate
         shifts = shift_decipher(kshift, para.Nc_conserve)
-
         for (K_total, pairs) in momentum_groups
-            scat_pair_group_coordinate!(sct_list2, pairs, para; shifts, element_type, V_int = replace_interaction, int_kwargs...)
+            scat_pair_group_coordinate!(sct_list2, pairs, para; shifts, element_type, H_two)
         end
     else
         if !isnothing(kshift)
-            @warn "kshift is ignored when para.V_int accepts momentum indices instead of coordinates."
+            @warn "kshift is ignored when para.H_two accepts momentum indices instead of coordinates."
         end
-
         for (K_total, pairs) in momentum_groups
-            scat_pair_group_index!(sct_list2, pairs, para; element_type, V_int = replace_interaction, int_kwargs...)
+            scat_pair_group_index!(sct_list2, pairs, para; element_type, H_two)
         end
     end
     

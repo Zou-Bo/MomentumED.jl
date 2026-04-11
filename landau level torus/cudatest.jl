@@ -60,14 +60,14 @@ sys_int = LandauInteraction(ReciprocalLattice(:triangular), (1, 0, 1, 0));
 sys_int.D_l = 10.0                  # Screening length D/l
 
 # Create parameter structure for bilayer system
-para = EDPara(k_list = k_list, Gk = Gk, V_int = sys_int);
+para = EDPara(k_list, Gk, H_two = sys_int);
 
 # Create momentum blocks (Hilbert subspace)
 subspaces, ss_k1, ss_k2 = ED_momentum_subspaces(para, (Ne, ));
 display(length.(subspaces))
 
 # one-body terms are all zero in flat Landau level
-scat = ED_sortedScatterList_twobody(para);
+scat = ED_scatterlist_twobody(para);
 
 hmlt = MBOperator(scat, upper_hermitian = true)
 

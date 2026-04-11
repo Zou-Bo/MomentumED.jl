@@ -97,7 +97,7 @@ subspaces, ss_k1, ss_k2 = ED_momentum_subspaces(para, (Ne,));
 display(length.(subspaces))
 
 # one-body terms are all zero in flat Landau level
-scat = ED_sortedScatterList_twobody(para);
+scat = ED_scatterlist_twobody(para);
 
 
 Neigen = 10  # Number of eigenvalues to compute per subspace
