@@ -93,7 +93,7 @@ para = EDPara(k_list=k_list, Gk=Gk, H_two=V_int);
 para.two_momentum_coordinate
 
 # Create momentum blocks (Hilbert subspace)
-subspaces, ss_k1, ss_k2 = ED_momentum_subspaces(para, (Ne,));
+subspaces, ss_k = ED_momentum_subspaces(para, (Ne,));
 display(length.(subspaces))
 
 # one-body terms are all zero in flat Landau level
@@ -104,7 +104,7 @@ Neigen = 10  # Number of eigenvalues to compute per subspace
 energies = Vector{Vector{Float64}}(undef, length(subspaces));
 vectors = Vector{Vector{<:MBS64Vector}}(undef, length(subspaces));
 for i in eachindex(subspaces)
-    println("Processing subspace #$i with size $(length(subspaces[i])), momentum $(ss_k1[i]), $(ss_k2[i])")
+    println("Processing subspace #$i with size $(length(subspaces[i])), momentum $(ss_k[i])")
     energies[i], vectors[i] = EDsolve(subspaces[i], scat;
         N=Neigen, showtime=true, ishermitian=true
     )

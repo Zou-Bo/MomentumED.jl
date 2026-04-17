@@ -1,6 +1,6 @@
 name = "MomentumED"
 uuid = "2c2e6bdd-50a7-494a-93d8-6f138df00727"
-version = "0.1.4"
+version = "0.2.0"
 authors = ["Alice loves Bob <zou.bo.phys@gmail.com>"]
 
 [deps]
@@ -16,7 +16,7 @@ CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 MomentumEDCUDAExt = "CUDA"
 
 [compat]
-EDCore = "0.1.4"
+EDCore = "0.2.0"
 KrylovKit = "0.10.0"
 julia = "1.11"
 

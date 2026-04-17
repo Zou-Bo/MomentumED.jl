@@ -11,13 +11,13 @@ using CairoMakie # for plotting
 CairoMakie.activate!()
 
 # Plot the energy spectrum
-function plot_ed_spectrum(energies, ss_k1, ss_k2; 
+function plot_ed_spectrum(energies, ss_k, Gk; 
     title = nothing, ylims = (nothing, nothing),
     ylabel = "Energy per unit cell (W₀ = e²/ϵl)")
 
     fig = Figure();
     ax = Axis(fig[1, 1];
-        xlabel = "$(Gk[2])k1+k2",
+        xlabel = "k1+$(Gk[1])k2",
         ylabel = ylabel
     )
     ax_top = Axis(fig[1, 1];
@@ -30,8 +30,8 @@ function plot_ed_spectrum(energies, ss_k1, ss_k2;
     linkxaxes!(ax, ax_top)
 
     # Plot energy levels for each momentum block
-    for i in 1:length(ss_k1)
-        x = Gk[2] * ss_k1[i] + ss_k2[i]
+    for i in eachindex(ss_k)
+        x = ss_k[i][1] + Gk[1] * ss_k[i][2]
         push!(top_ticks[1], x)
         push!(top_ticks[2], string(i))
         if isassigned(energies,i)
@@ -60,10 +60,10 @@ sys_int = LandauInteraction(ReciprocalLattice(:triangular), (1, 0, 1, 0));
 sys_int.D_l = 10.0                  # Screening length D/l
 
 # Create parameter structure for bilayer system
-para = EDPara(k_list, Gk, H_two = sys_int);
+para = EDPara(; k_list, Gk, H_two = sys_int);
 
 # Create momentum blocks (Hilbert subspace)
-subspaces, ss_k1, ss_k2 = ED_momentum_subspaces(para, (Ne, ));
+subspaces, ss_k = ED_momentum_subspaces(para, (Ne, ));
 display(length.(subspaces))
 
 # one-body terms are all zero in flat Landau level
@@ -92,7 +92,7 @@ energies = Vector{Vector{Float64}}(undef, length(subspaces));
 vectors = Vector{Vector{<:MBS64Vector}}(undef, length(subspaces));
 range = 1:8
 @time for i in eachindex(subspaces)[range]
-    println("Processing subspace #$i with size $(length(subspaces[i])), momentum $(ss_k1[i]), $(ss_k2[i])")
+    println("Processing subspace #$i with size $(length(subspaces[i])), momentum $(ss_k[i])")
     energies[i], vectors[i] = EDsolve(subspaces[i], hmlt;
         N = Neigen, showtime = true, ishermitian = true, method_info = false,
         # method = :sparse,
@@ -102,7 +102,7 @@ range = 1:8
     )
 end
 
-plot_ed_spectrum(energies[range]/Nk/LLT.W0, ss_k1, ss_k2,
+plot_ed_spectrum(energies[range]/Nk/LLT.W0, ss_k, Gk;
     title = "Nk = $Nk, Ne = $Ne",
 );
 

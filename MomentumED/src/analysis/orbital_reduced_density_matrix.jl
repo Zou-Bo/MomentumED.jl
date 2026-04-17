@@ -30,12 +30,12 @@ function OES_NumMomtBlocks(para::EDPara, orb_list,
         NA = Tuple(indexA) .- 1
         NB = Tuple(Ne) .- NA
         # println(NA, " ", NB)
-        Asubspace, Ak1, Ak2 = ED_momentum_subspaces(para, NA; mask = maskA);
-        Bsubspace, Bk1, Bk2 = ED_momentum_subspaces(para, NB; mask = maskB);
+        Asubspace, Ak = ED_momentum_subspaces(para, NA; mask = maskA);
+        Bsubspace, Bk = ED_momentum_subspaces(para, NB; mask = maskB);
         subspacesA_list[indexA] = Asubspace
         subspacesB_list[indexA] = Bsubspace
-        momentumA_list[indexA] = tuple.(Ak1, Ak2)
-        momentumB_list[indexA] = tuple.(Bk1, Bk2)
+        momentumA_list[indexA] = Ak
+        momentumB_list[indexA] = Bk
     end
 
     return subspacesA_list, subspacesB_list, momentumA_list, momentumB_list
@@ -60,12 +60,7 @@ function OES_NumMomtBlock_coef(para::EDPara, vector::MBS64Vector{bits, F}, momen
             # momentum pair
             kA = momentumA[iA]
             kB = momentum .- kA
-            if Gk[1] != 0
-                kB = (mod(kB[1], Gk[1]), kB[2])
-            end
-            if Gk[2] != 0
-                kB = (kB[1], mod(kB[2], Gk[2]))
-            end
+            Preparation.momentum_residue(kB, Gk)
             iB = findfirst(==(kB), momentumB)
             
             # fill the coefficient matrices

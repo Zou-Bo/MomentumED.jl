@@ -7,7 +7,7 @@ Generating Hilbert subspaces distinguished by total momentum using the previous 
 
 
 """
-    mbslist_onecomponent(para::EDPara, N_in_one::Int64[, mask])
+    mbslist_onecomponent(para::EDPara, N_in_one::Int64[, mask], start_end::Int64...)
 
 Construct the MBS list(iterator) of N electrons in one conserved component.
 
@@ -46,18 +46,15 @@ mbslist_onecomponent(para::EDPara, N_in_one::Int64, mask::Union{Nothing, Vector{
 Calculate the total momentum (K1, K2) of a many-body state.
 The momentum is mod G if G is nonzero (from para.Gk).
 """
-function MBS_totalmomentum(k_list::Matrix{Int64}, Gk::NTuple{2, Int64}, mbs::MBS64;
-    Nk = size(k_list, 2))::NTuple{2, Int64}
+function MBS_totalmomentum(k_list::Matrix{Int64}, Gk::NTuple{dim, Int64}, mbs::MBS64;
+    Nk = size(k_list, 2))::NTuple{dim, Int64} where {dim}
     # momentum are integers
-    k1 = 0; k2 = 0
+    k = ntuple(_ -> 0, Val(dim))
     for_each_occ(mbs) do i
-        momentum = @view k_list[:, mod1(i, Nk)]
-        k1 += momentum[1]
-        k2 += momentum[2]
+        i_k = mod1(i, Nk)
+        k = ntuple(d -> k[d] + k_list[d, i_k], Val(dim))
     end
-    iszero(Gk[1]) || (k1 = mod(k1, Gk[1]))
-    iszero(Gk[2]) || (k2 = mod(k2, Gk[2]))
-    return k1, k2
+    return momentum_residue(k, Gk)
 end
 MBS_totalmomentum(para::EDPara, mbs::MBS64) = MBS_totalmomentum(para.k_list, para.Gk, mbs; Nk = para.Nk)
 
@@ -68,17 +65,15 @@ Calculate the total momentum (K1, K2) from a list of occupied orbital indices.
 `i_list` can contain repeated numbers,
 and the momentum of that orbital will be added multiple times.
 """
-function MBS_totalmomentum(para::EDPara, i_list::Tuple{Vararg{Int64}})::NTuple{2, Int64}
+function MBS_totalmomentum(para::EDPara{dim}, i_list::Tuple{Vararg{Int64}})::NTuple{dim, Int64} where {dim}
     # momentum are integers
-    k1 = 0; k2 = 0; Gk = para.Gk
-    for i in i_list
-        momentum = @view para.k_list[:, mod1(i, para.Nk)]
-        k1 += momentum[1]
-        k2 += momentum[2]
+    k = ntuple(_ -> 0, Val(dim))
+    Gk = para.Gk
+    @inbounds for i in i_list
+        i_k = mod1(i, para.Nk)
+        k = ntuple(d -> k[d] + para.k_list[d, i_k], Val(dim))
     end
-    iszero(Gk[1]) || (k1 = mod(k1, Gk[1]))
-    iszero(Gk[2]) || (k2 = mod(k2, Gk[2]))
-    return k1, k2
+    return momentum_residue(k, Gk)
 end
 
 """
@@ -104,25 +99,24 @@ The `mask` argument, if provided, restricts the set of orbitals that can be occu
 
 """
 function mbslist_recursive_iteration!(subspace_lists::Vector{Vector{MBS64{bits}}}, 
-    subspace_k1::Vector{Int64}, subspace_k2::Vector{Int64}, 
-    para::EDPara, N_each_component::Vector{Int64}, 
+    subspace_k::Vector{NTuple{dim, Int64}}, para::EDPara{dim}, N_each_component::Vector{Int64}, 
     accumulated_mbs::MBS64 = reinterpret(MBS64{0}, 0), 
-    accumulated_momentum::Tuple{Int64, Int64} = (0, 0), start_end::Int64...; 
+    accumulated_momentum::NTuple{dim, Int64} = ntuple(_ -> 0, Val(dim)), start_end::Int64...; 
     mask::Union{Nothing, Vector{Int64}} = nothing,
     selection_rule::Function,
-) where {bits}
+) where {bits, dim}
 
     if !isempty(N_each_component) 
         PRINT_RECURSIVE_MOMENTUM_DIVISION && println("Enter loop with $N_each_component. 
         Momentum $(accumulated_momentum[1]) $(accumulated_momentum[2])\n\t$accumulated_mbs\n")
         if !isnothing(mask)
-            num_component_orbitals = para.Nk * para.Nc_mix* (length(N_each_component) - 1)
+            num_component_orbitals = para.Nk * para.Nc_mix * (length(N_each_component) - 1)
             i = searchsortedlast(mask, num_component_orbitals)
             mask_this_component = mask[i+1:end] .- num_component_orbitals
             for mbs_smaller in mbslist_onecomponent(para, abs(N_each_component[end]), mask_this_component, start_end...)
                 PRINT_RECURSIVE_MOMENTUM_DIVISION && println("generated mbs in the new component:\n$mbs_smaller")
                 new_momentum = sign(N_each_component[end]) .* MBS_totalmomentum(para, mbs_smaller)
-                mbslist_recursive_iteration!(subspace_lists, subspace_k1, subspace_k2, para, 
+                mbslist_recursive_iteration!(subspace_lists, subspace_k, para, 
                     N_each_component[begin:end-1],          # remaining components
                     accumulated_mbs * mbs_smaller,          # updated MBS64
                     accumulated_momentum .+ new_momentum;   # updated momentum 
@@ -134,7 +128,7 @@ function mbslist_recursive_iteration!(subspace_lists::Vector{Vector{MBS64{bits}}
             for mbs_smaller in mbslist_onecomponent(para, abs(N_each_component[end]), start_end...)
                 PRINT_RECURSIVE_MOMENTUM_DIVISION && println("generated mbs in the new component:\n$mbs_smaller")
                 new_momentum = sign(N_each_component[end]) .* MBS_totalmomentum(para, mbs_smaller)
-                mbslist_recursive_iteration!(subspace_lists, subspace_k1, subspace_k2, para, 
+                mbslist_recursive_iteration!(subspace_lists, subspace_k, para, 
                     N_each_component[begin:end-1],          # remaining components
                     accumulated_mbs * mbs_smaller,          # updated MBS64
                     accumulated_momentum .+ new_momentum;   # updated momentum 
@@ -146,12 +140,10 @@ function mbslist_recursive_iteration!(subspace_lists::Vector{Vector{MBS64{bits}}
 
     else
         if selection_rule(accumulated_mbs)
-            k1, k2 = accumulated_momentum
             Gk = para.Gk
-            iszero(Gk[1]) || (k1 = mod(k1, Gk[1]))
-            iszero(Gk[2]) || (k2 = mod(k2, Gk[2]))
-            PRINT_RECURSIVE_MOMENTUM_DIVISION && println("\tfinally: momentum $k1, $k2\t$accumulated_mbs")
-            index = findfirst((subspace_k1 .== k1) .& (subspace_k2 .== k2))
+            k = momentum_residue(accumulated_momentum, Gk)
+            PRINT_RECURSIVE_MOMENTUM_DIVISION && println("\tfinally: momentum $k\t$accumulated_mbs")
+            index = findfirst(==(k), subspace_k)
             if !isnothing(index)
                 push!(subspace_lists[index], accumulated_mbs)
             end
@@ -193,61 +185,35 @@ para = EDPara(k_list=[0 1; 0 0], Nc_conserve=2)
 subspaces, subspace_k1, subspace_k2 = ED_momentum_subspaces(para, (1, 2))
 ```
 """
-function ED_momentum_subspaces(para::EDPara, N_each_component;
-    momentum_restriction::Bool = false, k1range::Tuple{Int64, Int64} = (-2,2), k2range::Tuple{Int64, Int64} = (-2,2),
-    momentum_list::Vector{Tuple{Int64, Int64}} = Tuple{Int64, Int64}[],
+function ED_momentum_subspaces(para::EDPara{dim}, N_each_component;
+    momentum_restriction::Bool = false, momentum_list::Vector{NTuple{dim, Int64}} = NTuple{dim, Int64}[],
     mask::Union{Nothing, Vector{Int64}} = nothing,
     selection_rule::Function = Returns(true)
-    )::Tuple{Vector{HilbertSubspace}, Vector{Int64}, Vector{Int64}}
+    )::Tuple{Vector{HilbertSubspace}, Vector{NTuple{dim, Int64}}} where {dim}
 
     @assert length(N_each_component) == para.Nc_conserve "The length of number_list must be equal to the number of conserved components $(para.Nc_conserve)"
-
     Gk = para.Gk
-
-    # Preprocess momentum list to be within Gk and no duplicates
-    for i in eachindex(momentum_list)
-        k1, k2 = momentum_list[i]
-        iszero(Gk[1]) || (k1 = mod(k1, Gk[1]))
-        iszero(Gk[2]) || (k2 = mod(k2, Gk[2]))
-        momentum_list[i] = (k1, k2)
-    end
-    unique!(momentum_list)
 
     # Determine momentum ranges
     if momentum_restriction
-        k1min, k1max = minmax(k1range...)
-        k2min, k2max = minmax(k2range...)
-        # Adjust k1range and k2range if they are too large
-        if !iszero(Gk[1]) && k1max - k1min + 1 > Gk[1]
-            k1min, k1max = (0, Gk[1]-1)
+        # Preprocess momentum list to be within Gk and no duplicates
+        for i in eachindex(momentum_list)
+            momentum_list[i] = momentum_residue(momentum_list[i], Gk)
         end
-        if !iszero(Gk[2]) && k2max - k2min + 1 > Gk[2]
-            k2min, k2max = (0, Gk[2]-1)
-        end
+        unique!(momentum_list)
     else
-        if !iszero(Gk[1])
-            k1min, k1max = (0, Gk[1]-1)
-        else
-            k1min, k1max = extrema(para.k_list[1,:]) .* sum(N_each_component)
-        end
-        if !iszero(Gk[2])
-            k2min, k2max = (0, Gk[2]-1)
-        else
-            k2min, k2max = extrema(para.k_list[2,:]) .* sum(N_each_component)
-        end
-    end
+        empty!(momentum_list)
 
-
-    # make momentum lists first
-    subspace_k1 = Int64[];
-    subspace_k2 = Int64[];
-    for K1 in k1min:k1max, K2 in k2min:k2max
-        iszero(Gk[1]) || (K1 = mod(K1, Gk[1]))
-        iszero(Gk[2]) || (K2 = mod(K2, Gk[2]))
-        if isempty(momentum_list) || (K1, K2) ∈ momentum_list
-            push!(subspace_k1, K1)
-            push!(subspace_k2, K2)
+        k_range = ntuple(Val(dim)) do d
+            if iszero(Gk[d])
+                min_kd = minimum(para.k_list[d, :]) * sum(N_each_component)
+                max_kd = maximum(para.k_list[d, :]) * sum(N_each_component)
+                min_kd:max_kd
+            else
+                0:Gk[d]-1
+            end
         end
+        momentum_list = vec(collect(Iterators.product(k_range...)))
     end
 
     bits = para.Nk * para.Nc
@@ -263,10 +229,10 @@ function ED_momentum_subspaces(para::EDPara, N_each_component;
     chunk_ends = [t * chunk_size + min(chunk_res, t) for t in 1:n_chunks]
     chunk_starts = [1; chunk_ends[begin:end-1] .+ 1]
     # multi-thread iteratively generate basis of each chunk
-    local_list_of_lists = [[Vector{MBS64{bits}}() for sn in eachindex(subspace_k1)] for t in 1:n_chunks]
+    local_list_of_lists = [[Vector{MBS64{bits}}() for sn in eachindex(momentum_list)] for t in 1:n_chunks]
     Threads.@threads :static for t in 1:n_chunks
         mbslist_recursive_iteration!(
-            local_list_of_lists[t], subspace_k1, subspace_k2, 
+            local_list_of_lists[t], momentum_list, 
             para, collect(N_each_component),
             reinterpret(MBS64{0}, 0),              # accumulated_mbs
             (0, 0),                                # accumulated_momentum
@@ -275,8 +241,8 @@ function ED_momentum_subspaces(para::EDPara, N_each_component;
         )
     end
     # combine chunks
-    subspaces = Vector{HilbertSubspace{bits}}(undef, length(subspace_k1))
-    for sn in eachindex(subspace_k1)
+    subspaces = Vector{HilbertSubspace{bits}}(undef, length(momentum_list))
+    for sn in eachindex(momentum_list)
         list = Vector{MBS64{bits}}()
         sizehint!(list, sum(t -> length(local_list_of_lists[t][sn]), 1:n_chunks))
         for t in eachindex(local_list_of_lists)
@@ -288,8 +254,18 @@ function ED_momentum_subspaces(para::EDPara, N_each_component;
 
     empty_mask = length.(subspaces) .!= 0
     subspaces = subspaces[empty_mask]
-    subspace_k1 = subspace_k1[empty_mask]
-    subspace_k2 = subspace_k2[empty_mask]
+    subspace_k = momentum_list[empty_mask]
 
-    return subspaces, subspace_k1, subspace_k2
+    return subspaces, subspace_k
+end
+
+function ED_momentum_subspaces(para::EDPara{dim}, N_each_component::Int64;
+    momentum_restriction::Bool = false, momentum_list::Vector{NTuple{dim, Int64}} = NTuple{dim, Int64}[],
+    mask::Union{Nothing, Vector{Int64}} = nothing,
+    selection_rule::Function = Returns(true)
+    )::Tuple{Vector{HilbertSubspace}, Vector{NTuple{dim, Int64}}} where {dim}
+
+    return ED_momentum_subspaces(para, (N_each_component, );
+        momentum_restriction, momentum_list, mask, selection_rule)
+
 end

@@ -10,7 +10,7 @@
     mutable struct EDPara{dim, H1, H2}
 
 Stores all parameters for a momentum-conserved exact diagonalization calculation.
-Integer `dim` indicates spatial dimension, default to be 2.
+Integer `dim` indicates spatial dimension.
 `H1` and `H2` are types of callable objects to give the one-body and two-body terms, respectively.
 
 # Constructor
@@ -35,8 +35,8 @@ Integer `dim` indicates spatial dimension, default to be 2.
 # Fields (in addition to keyword arguments)
 - `Nk::Int64`: The number of momentum states, derived from `size(k_list, 2)`.
 - `Nc::Int64`: The total number of components, `Nc_mix * Nc_conserve`.
-- `one_momentum_coordinate::Bool`: A flag that is automatically set to `true` if `H_one` accepts momentum coordinates (`Tuple{Float64,Float64}`), and `false` if it accepts momentum indices (`Int64`).
-- `two_momentum_coordinate::Bool`: A flag that is automatically set to `true` if `H_two` accepts momentum coordinates (`Tuple{Float64,Float64}`), and `false` if it accepts momentum indices (`Int64`).
+- `one_momentum_coordinate::Bool`: A flag that is automatically set to `true` if `H_one` accepts momentum coordinates (`NTuple{dim, <:Real}`), and `false` if it accepts momentum indices (`Int64`).
+- `two_momentum_coordinate::Bool`: A flag that is automatically set to `true` if `H_two` accepts momentum coordinates (`NTuple{dim, <:Real}`), and `false` if it accepts momentum indices (`Int64`).
 
 # Band Dispersion Function (`H_one`) and Interaction Function (`H_two`)
 The `H_one` function must accept 4 arguments and return a complex number.
@@ -44,7 +44,7 @@ The `H_one` function must accept 4 arguments and return a complex number.
 The `H_two` function must accept 8 arguments and return a complex number.. 
 `H_two(kf1, kf2, ki2, ki1, cf1::Int64, cf2::Int64, ci2::Int64, ci1::Int64)` -> a complex number.
 Input momenta can have one of two signatures:
-1.  Coordinate-based: `ki` and `kf` are momentum coordinates as `Tuple{<:Real, <:Real}`.
+1.  Coordinate-based: `ki` and `kf` are momentum coordinates as `NTuple{dim, <:Real}`.
 2.  Index-based: `ki` and `kf` are momentum indices as `Int64`, refering to the momenta in `k_list`.
 The constructor automatically detects which signature is used.
 
@@ -95,26 +95,26 @@ mutable struct EDPara{dim, H1, H2}
         # Validation
         @assert Nc > 0 "Number of components must be positive"
         @assert Nk*Nc <= 64 "The total orbital number exceeds 64 bits."
+        @assert all(>=(0), Gk) "Gk must all be non-negative integers."
         
         # Validate H_one function signature - accept Tuple{<:Real,<:Real} or Int64 momentum format
         if !isnothing(one_momentum_coordinate)
             if one_momentum_coordinate
-                @assert hasmethod(H_one, Tuple{Tuple{<:Real,<:Real}, Int64, Int64}) "H_one is expected to accept (k::Tuple{<:Real,<:Real}, cf::Int64, ci::Int64), but H_one does not have the correct method signature."
+                @assert hasmethod(H_one, Tuple{NTuple{dim, <:Real}, Int64, Int64}) "H_one is expected to accept (k::NTuple{dim, <:Real}, cf::Int64, ci::Int64), but H_one does not have the correct method signature."
             else
                 @assert hasmethod(H_one, Tuple{Int64, Int64, Int64}) "H_one is expected to accept (k::Int64, cf::Int64, ci::Int64), but H_one does not have the correct method signature."
             end
         else
-            if hasmethod(H_one, Tuple{Tuple{<:Real,<:Real}, Int64, Int64})
+            if hasmethod(H_one, Tuple{NTuple{dim, <:Real}, Int64, Int64})
                 one_momentum_coordinate = true
             elseif hasmethod(H_one, Tuple{Int64, Int64, Int64})
                 one_momentum_coordinate = false
             else
                 throw(AssertionError("""
                 H_one function must accept 4 arguments:
-                    either (k::Tuple{<:Real,<:Real}, cf::Int64, ci::Int64)
+                    either (k::NTuple{dim, <:Real}, cf::Int64, ci::Int64)
                     or (k::Int64, cf::Int64, ci::Int64);
                 and return a complex number.
-                Current function fails to give H_one((0.0,0.0), 1, 1) or H_one(1, 1, 1)
                 """))
             end
         end
@@ -122,22 +122,21 @@ mutable struct EDPara{dim, H1, H2}
         # Validate H_two function signature - accept Tuple{<:Real,<:Real} or Int64 momentum format
         if !isnothing(two_momentum_coordinate)
             if two_momentum_coordinate
-                @assert hasmethod(H_two, Tuple{Tuple{<:Real,<:Real}, Tuple{<:Real,<:Real}, Tuple{<:Real,<:Real}, Tuple{<:Real,<:Real}, Int64, Int64, Int64, Int64}) "H_two is expected to accept (kf1::Tuple{<:Real,<:Real}, kf2::Tuple{<:Real,<:Real}, ki1::Tuple{<:Real,<:Real}, ki2::Tuple{<:Real,<:Real}, cf1::Int64, cf2::Int64, ci1::Int64, ci2::Int64), but H_two does not have the correct method signature."
+                @assert hasmethod(H_two, Tuple{NTuple{dim, <:Real}, NTuple{dim, <:Real}, NTuple{dim, <:Real}, NTuple{dim, <:Real}, Int64, Int64, Int64, Int64}) "H_two is expected to accept (kf1::NTuple{dim, <:Real}, kf2::NTuple{dim, <:Real}, ki1::NTuple{dim, <:Real}, ki2::NTuple{dim, <:Real}, cf1::Int64, cf2::Int64, ci1::Int64, ci2::Int64), but H_two does not have the correct method signature."
             else
                 @assert hasmethod(H_two, Tuple{Int64, Int64, Int64, Int64, Int64, Int64, Int64, Int64}) "H_two is expected to accept (kf1::Int64, kf2::Int64, ki1::Int64, ki2::Int64, cf1::Int64, cf2::Int64, ci1::Int64, ci2::Int64), but H_two does not have the correct method signature."
             end
         else
-            if hasmethod(H_two, Tuple{Tuple{<:Real,<:Real}, Tuple{<:Real,<:Real}, Tuple{<:Real,<:Real}, Tuple{<:Real,<:Real}, Int64, Int64, Int64, Int64})
+            if hasmethod(H_two, Tuple{NTuple{dim, <:Real}, NTuple{dim, <:Real}, NTuple{dim, <:Real}, NTuple{dim, <:Real}, Int64, Int64, Int64, Int64})
                 two_momentum_coordinate = true
             elseif hasmethod(H_two, Tuple{Int64, Int64, Int64, Int64, Int64, Int64, Int64, Int64})
                 two_momentum_coordinate = false
             else
                 throw(AssertionError("""
                 H_two function must accept 8 arguments:
-                    either (kf1::Tuple{<:Real,<:Real}, kf2::Tuple{<:Real,<:Real}, ki1::Tuple{<:Real,<:Real}, ki2::Tuple{<:Real,<:Real}, cf1::Int64, cf2::Int64, ci1::Int64, ci2::Int64)
+                    either (kf1::NTuple{dim, <:Real}, kf2::NTuple{dim, <:Real}, ki1::NTuple{dim, <:Real}, ki2::NTuple{dim, <:Real}, cf1::Int64, cf2::Int64, ci1::Int64, ci2::Int64)
                     or (kf1::Int64, kf2::Int64, ki1::Int64, ki2::Int64, cf1::Int64, cf2::Int64, ci1::Int64, ci2::Int64)"));
                 and return ComplexF64.
-                Current function fails to give ComplexF64 H_two((0.0,0.0), (0.0,0.0), (0.0,0.0), (0.0,0.0), 1, 1, 1, 1) or H_two(1, 1, 1, 1, 1, 1, 1, 1)
                 """))
             end
         end
@@ -146,3 +145,8 @@ mutable struct EDPara{dim, H1, H2}
     end
 end
 
+@inline function momentum_residue(k::NTuple{dim, Int64}, Gk::NTuple{dim, Int64}) where {dim}
+    ntuple(Val(dim)) do d
+        Gk[d] == 0 ? k[d] : mod(k[d], Gk[d])
+    end
+end
