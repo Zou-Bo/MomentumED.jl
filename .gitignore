@@ -55,9 +55,9 @@ dist/
 *.backup
 
 # working files
-Landau level disk*
-Landau level torus/test*
-Landau level torus/exciton condensate/
+examples/Landau level sphere*
+examples/TMDmoire*
+examples/Landau level torus/test*
 
 git_delete_commit_guide.md
 alloc-profile*

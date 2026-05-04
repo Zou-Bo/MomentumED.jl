@@ -1,3 +1,5 @@
+# to-do: make better orbital_overlap function
+
 "Parameters and functions for Landau levels with torus geometry and periodic boundary condition"
 module LLT
 
@@ -11,8 +13,8 @@ module LLT
     # Global variables, usually no need to change
     const W0::Float64 = 1.0                     # Interaction strength (energy unit)
     const l::Float64 = 1.0                      # Magnetic Length (length/momentum unit)
-    Gl_cutoff::Float64 = 10.0                   # number of shells (|Gl| <= Gl_cutoff) included in the interaction 
-    PRINT_INT_DETAIL::Bool = false              # print the details in calculating the interaction
+    const Gl_cutoff::Float64 = 10.0                   # number of shells (|Gl| <= Gl_cutoff) included in the interaction 
+    # PRINT_INT_DETAIL::Bool = false              # print the details in calculating the interaction
 
     # "Weierstrass zeta wrapped from ArbNumerics"
     # wζ(z, tau) = ComplexF64(weierstrass_zeta(ArbComplex(z), ArbComplex(tau)))
@@ -93,8 +95,11 @@ module LLT
 
     # Cross product for 2D vectors (returns scalar z-component)
     # Used for computing geometric phases in the magnetic translation algebra
-    function ql_cross(q1::Tuple{<: Real, <: Real}, q2::Tuple{<: Real, <: Real})::Real
+    function ql_cross(q1::Tuple{<: Real, <: Real}, q2::Tuple{<: Real, <: Real})
         return q1[1] * q2[2] - q1[2] * q2[1]
+    end
+    function ql_cross(q1::Tuple{<: Real, <: Real}, q2_1::Real, q2_2::Real)
+        return q1[1] * q2_2 - q1[2] * q2_1
     end
 
 
@@ -123,10 +128,6 @@ module LLT
         distance01 = distance00 - 2kdotG2 + lattice.exact_G2²_G1²
         distance10 = distance00 - 2kdotG1 + 1
         distance11 = distance00 - 2kdotG1 - 2kdotG2 + 1 + 2lattice.exact_G1dotG2_G1² + lattice.exact_G2²_G1²
-
-        # if output
-        #     println((k1, k2), [distance11, distance10, distance01, distance00])
-        # end
 
         if distance11 <= distance10 && distance11 <= distance01 && distance11 <= distance00
             return (k1-1, k2-1)
@@ -169,6 +170,14 @@ module LLT
         F *= (ql_sqrt2 * im)^(n_grater - n_less)
         F *= cis(Chern * ql_phase * (n_f - n_i))
 
+    end
+    function level_form_factor(n::Int64, ql::ComplexF64;
+        Chern::Int64 = 1)::ComplexF64
+
+        @assert abs(Chern) == 1 "Chern number can only be +1 or -1"
+
+        q²l² = abs2(ql)
+        F = exp(-0.25) * laguerrel(n, 0.5q²l²)
     end
 
 
@@ -265,7 +274,7 @@ module LLT
         cf1::Int64 = 1, cf2::Int64 = 1, ci2::Int64 = 1, ci1::Int64 = 1
     )::ComplexF64
         
-        @inline read_component(v)  = v[cf1], v[cf2], v[ci2], v[ci1]
+        @inline read_component(v) = v[cf1], v[cf2], v[ci2], v[ci1]
         lf1, lf2, li2, li1 = read_component(V_int.components.layer)
         nf1, nf2, ni2, ni1 = read_component(V_int.components.level)
         Cf1, Cf2, Ci2, Ci1 = read_component(V_int.components.Chern)
@@ -291,22 +300,31 @@ module LLT
         G_shift1 = round.(Int64, ki1 .- kf1 .- q, RoundNearest)
         G_shift2 = round.(Int64, kf2 .- ki2 .- q, RoundNearest)
 
+        q1 = float(q[1])
+        q2 = float(q[2])
+        G1 = V_int.lattice.G1
+        G2 = V_int.lattice.G2
+
         V_total = ComplexF64(0.0)
         # Sum over reciprocal lattice vectors for convergence
-        PRINT_INT_DETAIL && println("Nshell=$V_int.Nshell, q=$q, G_shift1=$G_shift1, G_shift2=$G_shift2")
         for g1 in -V_int.Nshell:V_int.Nshell, g2 in -V_int.Nshell:V_int.Nshell
             if abs2(g1 * V_int.lattice.G1 + g2 * V_int.lattice.G2) > Gl_cutoff^2
                 continue
             end
 
             # Construct the full momentum transfer including reciprocal lattice
-            qq1 = q[1] + g1
-            qq2 = q[2] + g2
-            ql::ComplexF64 = (qq1 * V_int.lattice.G1 + qq2 * V_int.lattice.G2) * l
+            qq1 = q1 + g1
+            qq2 = q2 + g2
+            ql = (qq1 * G1 + qq2 * G2) * l
             
             # mixed Coulomb and Haldane interaction
-            V  = V_int.mix * V_Haldane(abs(ql); same_layer = (li1==li2), V_intra = V_int.V_intra, V_inter = V_int.V_inter)
-            V += (1-V_int.mix) * V_Coulomb(abs(ql); same_layer = (li1==li2), d_l = V_int.d_l, D_l = V_int.D_l) 
+            V = zero(Float64)
+            if V_int.mix != 0.0
+                V += V_int.mix * V_Haldane(abs(ql); same_layer = (li1==li2), V_intra = V_int.V_intra, V_inter = V_int.V_inter)
+            end
+            if V_int.mix != 1.0
+                V += (1-V_int.mix) * V_Coulomb(abs(ql); same_layer = (li1==li2), d_l = V_int.d_l, D_l = V_int.D_l) 
+            end
 
             # Landau level form factor
             F1 = level_form_factor(nf1, ni1, -ql; Chern = Ci1)
@@ -315,14 +333,13 @@ module LLT
             # Calculate phase factors from magnetic translation algebra
             # These phases ensure proper commutation relations and gauge invariance
             phase_angle  = -Ci1 * ql_cross(ki1, kf1)
-            phase_angle += -Ci1 * ql_cross(ki1 .+ kf1, (qq1, qq2) )
+            phase_angle += -Ci1 * ql_cross(ki1 .+ kf1, qq1, qq2)
             phase_angle += -Ci2 * ql_cross(ki2, kf2)
-            phase_angle += -Ci2 * ql_cross(ki2 .+ kf2, (-qq1, -qq2) )
+            phase_angle += -Ci2 * ql_cross(ki2 .+ kf2, -qq1, -qq2)
             phase = cispi(phase_angle)
 
             sign = ita(g1+G_shift1[1], g2+G_shift1[2]) * ita(g1+G_shift2[1], g2+G_shift2[2])
 
-            PRINT_INT_DETAIL && println("g1,g2=$((g1,g2)), ql=$(abs(ql)), VFF=$(V * F1 * F2), sign=$sign, phase=$phase.")
             V_total += sign * V * F1 * F2 * phase
         end
 
@@ -333,29 +350,47 @@ module LLT
     using MomentumED
 
     function orbital_overlap(para::EDPara,
-        k_f::Tuple{<:Real, <:Real}, k_i::Tuple{<:Real, <:Real})
+        shift_f::Vector{Tuple{T, T}}, shift_i::Vector{Tuple{T, T}}) where T <: Real
+
+        # @assert length(shift_f) == length(shift_i) == length(para.H_two.components.Chern)
 
         Nk = para.Nk
         Nc = para.Nc
         Gk = para.Gk
-        LI = para.H_two
-        bc = Vector{ComplexF64}(undef, Nk * Nc)
+        k_list = para.k_list
+        cp = para.H_two.components
+        G1 = para.H_two.lattice.G1
+        G2 = para.H_two.lattice.G2
+        overlap = Vector{ComplexF64}(undef, Nk * Nc)
 
-        k_f = (k_f[1] // Gk[1], k_f[2] // Gk[2])
-        k_i = (k_i[1] // Gk[1], k_i[2] // Gk[2])
-        dk = k_f .- k_i
-        k = 0.5 .* (k_f .+ k_i)
-        dk_complex = dk[1] * LI.lattice.G1 + dk[2] * LI.lattice.G2
         for c in 1:Nc
-            range = (c-1)*Nk .+ (1:Nk)
-            C = LI.components.Chern[c] 
-            n = LI.components.level[c]
-            F = level_form_factor(n, n, dk_complex * LLT.l; Chern = C)
-            bc[range] .= F * cispi(C * (k[1]*dk[2] - k[2]*dk[1]))
+            q = (shift_f[c] .- shift_i[c]) ./ Gk
+            ql_complex = (q[1] * G1 + q[2] * G2) * l
+            C = cp.Chern[c] 
+            n = cp.level[c]
+            F = level_form_factor(n, ql_complex; Chern = C)
+            index_shift = Nk * (c - 1)
+            for k in 1:Nk
+                k_f = ((k_list[1, k] + shift_f[c][1]) / Gk[1], (k_list[2, k] + shift_f[c][2]) / Gk[2])
+                k_i = ((k_list[1, k] + shift_i[c][1]) / Gk[1], (k_list[2, k] + shift_i[c][2]) / Gk[2])
+                phase_angle  = ql_cross(k_f, k_i)
+                phase_angle += ql_cross(k_i .+ k_f, q)
+                overlap[k + index_shift] = F * cispi(phase_angle)
+            end
         end
-        
-        return bc
+
+        return overlap
     end
+    function orbital_overlap(para::EDPara,
+        shift_f::Tuple{T, T}, shift_i::Tuple{T, T}) where T <: Real
+        Nc = para.Nc
+        return orbital_overlap(
+            para,
+            fill(shift_f, Nc),
+            fill(shift_i, Nc),
+        )
+    end
+
 
     function momentum_index_search(k1::Int64, k2::Int64; para::EDPara)::Int64
         Gk1, Gk2 = para.Gk
