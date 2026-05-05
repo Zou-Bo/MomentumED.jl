@@ -1,6 +1,6 @@
 name = "MomentumED"
 uuid = "2c2e6bdd-50a7-494a-93d8-6f138df00727"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Alice loves Bob <zou.bo.phys@gmail.com>"]
 
 [deps]
@@ -18,7 +18,10 @@ MomentumEDCUDAExt = "CUDA"
 [compat]
 EDCore = "0.2.0"
 KrylovKit = "0.10.0"
+CUDA = "6"
 julia = "1.11"
+LinearAlgebra = "1"
+SparseArrays = "1"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"

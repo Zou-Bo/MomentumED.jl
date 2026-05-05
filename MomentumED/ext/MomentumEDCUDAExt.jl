@@ -285,7 +285,7 @@ module MomentumEDCUDAExt
             end
         end
 
-        CUDA_MEMORY_MONITOR[] && CUDA.memory_status()
+        CUDA_MEMORY_MONITOR[] && CUDA.pool_status()
         
         CUDA.unsafe_free!(buf_in)
         CUDA.unsafe_free!(buf_out)
