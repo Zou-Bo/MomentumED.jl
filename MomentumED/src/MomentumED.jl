@@ -21,9 +21,9 @@ export ED_bracket, ED_bracket_threaded
 public ColexMBS64, ColexMBS64Mask
 
 # preparation
-export EDPara, ED_momentum_subspaces
-export ED_scatterlist_onebody
-export ED_scatterlist_twobody
+export EDPara
+export MBS_totalmomentum, ED_momentum_subspaces
+export ED_scatterlist_onebody, ED_scatterlist_twobody
 
 # methods
 public SparseHmltMatrix, LinearMap
@@ -31,7 +31,7 @@ public release_cuda, CUDA_AVAILABLE, CUDA_KRYLOV_INPLACE_RESTART_CHUNKSIZE, CUDA
 
 # analysis - reduced density matrix for entanglement spectrum
 export PES_1rdm, PES_MomtBlocks, PES_MomtBlock_rdm
-export OES_NumMomtBlocks, OES_NumMomtBlock_coef
+export OES_NumMomtBlocks, OES_NumMomtBlock_spectrum
 
 # analysis - many-body connection
 export ED_connection_step, ED_connection_gaugefixing!
@@ -65,9 +65,9 @@ module MomentumED
     public ColexMBS64, ColexMBS64Mask
 
     # preparation
-    export EDPara, ED_momentum_subspaces
-    export ED_scatterlist_onebody
-    export ED_scatterlist_twobody
+    export EDPara
+    export MBS_totalmomentum, ED_momentum_subspaces
+    export ED_scatterlist_onebody, ED_scatterlist_twobody
 
     # methods
     public SparseHmltMatrix, LinearMap
@@ -75,7 +75,7 @@ module MomentumED
 
     # analysis - reduced density matrix for entanglement spectrum
     export PES_1rdm, PES_MomtBlocks, PES_MomtBlock_rdm
-    export OES_NumMomtBlocks, OES_NumMomtBlock_coef
+    export OES_NumMomtBlocks, OES_NumMomtBlock_spectrum
 
     # analysis - many-body connection
     export ED_connection_step, ED_connection_gaugefixing!
@@ -94,9 +94,9 @@ module MomentumED
     Hermitian Hamiltonian, and momentum conservation.
     """
     module Preparation
-        export EDPara, ED_momentum_subspaces
-        export ED_scatterlist_onebody
-        export ED_scatterlist_twobody
+        export EDPara
+        export MBS_totalmomentum, ED_momentum_subspaces
+        export ED_scatterlist_onebody, ED_scatterlist_twobody
 
         import ..MomentumED.PRINT_RECURSIVE_MOMENTUM_DIVISION
         import ..MomentumED.PRINT_TWOBODY_SCATTER_PAIRS
@@ -127,11 +127,35 @@ module MomentumED
         using SparseArrays
         using LinearAlgebra
         using KrylovKit
+        using KernelAbstractions
         
         include("method/sparse_matrix.jl")
         include("method/linear_map.jl")
         include("method/gpu_linear_map.jl")
     end
+
+    """
+    This module provides methods to analysis the ED eigenwavefunctions,
+    including generating particle(hole)/orbital reduced density matrix for entanglement spectrum analysis, 
+    and many-body connection analysis with momentum shifts
+    """
+    module Analysis
+        export PES_1rdm, PES_MomtBlocks, PES_MomtBlock_rdm
+        export OES_NumMomtBlocks, OES_NumMomtBlock_coef, OES_NumMomtBlock_spectrum
+        export ED_connection_step, ED_connection_gaugefixing!
+        export ED_step_inner_prod
+
+        using EDCore
+        using ..Preparation
+
+        include("analysis/particle_reduced_density_matrix.jl")
+        include("analysis/orbital_reduced_density_matrix.jl")
+        include("analysis/manybody_quantum_geometry.jl")
+    end
+
+    using .Preparation
+    using .Methods
+    using .Analysis
 
     """
         EDsolve(subspace::HilbertSubspace, hamiltonian; kwargs...) 
@@ -185,47 +209,54 @@ module MomentumED
     energies, vecs = EDsolve(subspaces[1], H_op; N=2, method=:map)
     ```
     """
-    function EDsolve(subspace::HilbertSubspace{bits}, sorted_scat_lists::Vector{<: Scatter}...;
-        N::Int64, showtime::Bool = false, method::Symbol = :sparse, ishermitian::Bool = true,
-        min_sparse_dim::Int64 = 100, max_dense_dim::Int64 = 200, map_warning_dim::Int64 = 20000, 
-        method_info::Bool = true, element_type::Type = Float64, index_type::Type = Int64, 
+    function EDsolve(subspace::HilbertSubspace{bits}, scat_lists::Vector{<: Scatter}...;
+        N::Int64, method::Symbol = :sparse, device::Symbol = :cpu,
+        showtime::Bool = false, ishermitian::Bool = true,
+        element_type::Type = Float64, index_type::Type = Int32, 
+        min_sparse_dim::Int64 = 100, max_dense_dim::Int64 = 500, map_warning_dim::Int64 = 20000, method_info::Bool = true, 
         krylovkit_kwargs... ) where {bits}
 
-        @assert N >= 1
+        @assert N >= 1 "N should be at least 1."
+        @assert length(subspace) <= typemax(index_type) "Hilbert space dimension $(length(subspace)) exceeds limit of index_type=$index_type."
+        @assert method ∈ (:sparse, :dense, :map) "Unknown method: $method. Use :sparse, :dense, :map."
+        @assert device ∈ (:cpu, :gpu, :cuda) "Unknown device: $device. Use :cpu, :gpu, :cuda."
 
-        if method ∈ (:map, :cuda_map, :gpu_map)
-            error("Linear map methods (:map, :cuda_map, :gpu_map) are only supported when input Hamitonian is MBOperator instead of Vector{Scatter}.")
-        elseif method == :sparse || method == :dense
+        if method == :map
+            error("Linear map methods are only supported when input Hamitonian is MBOperator instead of Vector{Scatter}.")
+        end
 
-            if min_sparse_dim > max_dense_dim
-                method_info && @info "Trying to set min_sparse_dim as $min_sparse_dim, larger than max_dense_dim(=$max_dense_dim). Reset to $max_dense_dim automatically."
-                min_sparse_dim = max_dense_dim
-            end
-            if method == :sparse && length(subspace) < min_sparse_dim
-                method_info && @info "Hilbert space dimension < $min_sparse_dim; switch to method=:dense automatically."
-                method = :dense
-            end
-            if method == :dense && length(subspace) > max_dense_dim
-                method_info && @info "Hilbert space dimension > $max_dense_dim; switch to method=:sparse automatically."
-                method = :sparse
-            end
+        if min_sparse_dim > max_dense_dim
+            method_info && @info "Trying to set min_sparse_dim as $min_sparse_dim, larger than max_dense_dim(=$max_dense_dim). Reset to $max_dense_dim automatically."
+            min_sparse_dim = max_dense_dim
+        end
+        if method == :sparse && length(subspace) < min_sparse_dim
+            method_info && @info "Hilbert space dimension < $min_sparse_dim; switch to method=:dense automatically."
+            method = :dense
+        end
+        if method == :dense && length(subspace) > max_dense_dim
+            method_info && @info "Hilbert space dimension > $max_dense_dim; switch to method=:sparse automatically."
+            method = :sparse
+        end
 
-            @assert ishermitian "Current Hamiltonian matrix construction assumes it being Hermitian."
+        @assert ishermitian "Current Hamiltonian matrix construction assumes it being Hermitian."
 
-            # Construct sparse Hamiltonian matrix from Scatter terms
-            if showtime
-                @time H = SparseHmltMatrix(subspace, vcat(sorted_scat_lists...);
-                    element_type = element_type, index_type = index_type
-                )
-            else
-                H = SparseHmltMatrix(subspace, vcat(sorted_scat_lists...);
-                    element_type = element_type, index_type = index_type
-                )
-            end
+        # Construct sparse Hamiltonian matrix from Scatter terms
+        if showtime
+            @time H = SparseHmltMatrix(subspace, vcat(scat_lists...);
+                element_type = element_type, index_type = index_type
+            )
+        else
+            H = SparseHmltMatrix(subspace, vcat(scat_lists...);
+                element_type = element_type, index_type = index_type
+            )
+        end
 
-            if method == :sparse
+        if method == :sparse
 
-                @assert N <= length(subspace)
+            dim = size(H, 1)
+            N > dim && (N = dim)
+
+            if device == :cpu
 
                 # Solve the eigenvalue problem
                 if showtime
@@ -240,58 +271,99 @@ module MomentumED
                 energies = vals[1:N]
                 vectors = [MBS64Vector(vecs[i], subspace) for i in 1:N]
 
-            elseif method == :dense
+                return energies, vectors
 
-                dim = size(H, 1)
-                if dim > 1000
-                    @warn "Dense diagonalization may be slow for dim=$dim. Consider using :sparse method."
-                end
-                N > dim && (N = dim)
+            elseif device == :cuda || device == :gpu
 
-                # Convert to dense matrix and solve
-                if ishermitian
-                    if showtime
-                        @time vals, vecs = eigen(Hermitian(Matrix(H)))
-                    else
-                        vals, vecs = eigen(Hermitian(Matrix(H)))
-                    end
+                Methods._throw_cuda_unavailable()
+                H_gpu = Methods.create_gpu_matrix(H)
+
+                # Solve the eigenvalue problem with GPU-accelerated sparse matrix
+                if showtime
+                    @time vals, vecs_gpu, _ = krylov_matrix_solve(H_gpu, N; ishermitian, krylovkit_kwargs...)
                 else
-                    if showtime
-                        @time vals, vecs = eigen(Matrix(H))
-                    else
-                        vals, vecs = eigen(Matrix(H))
-                    end
+                    vals, vecs_gpu, _ = krylov_matrix_solve(H_gpu, N; ishermitian, krylovkit_kwargs...)
                 end
 
+                if length(vals) < N
+                    error("Krylov method fails. Cannot find $N eigenvectors.")
+                end
                 energies = vals[1:N]
-                vectors = [MBS64Vector(vecs[:, i], subspace) for i in 1:N] # Convert to vector of vectors
+                vectors = [MBS64Vector(Array(vecs_gpu[i]), subspace) for i in 1:N]
+
+                # free GPU memory
+                H_gpu = nothing; vecs_gpu = nothing
+                release_cuda(2)
+
+                return energies, vectors
 
             end
 
-        else
-            error("Unknown method: $method. Use :sparse, :dense, :map, :cuda_map, or :gpu_map.")
+        elseif method == :dense
+
+            dim = size(H, 1)
+            if dim > 1000
+                method_info && @warn "Dense diagonalization may be slow for dim=$dim. Consider using :sparse method."
+            end
+            N > dim && (N = dim)
+
+            if device != :cpu
+                @warn "Dense method does not support GPU acceleration. Ignoring device=$device and using CPU."
+            end
+
+            # Convert H to a dense matrix and solve
+            if ishermitian
+                if showtime
+                    @time vals, vecs = eigen(Hermitian(Matrix(H)), 1:N)
+                else
+                    vals, vecs = eigen(Hermitian(Matrix(H)), 1:N)
+                end
+            else
+                if showtime
+                    @time vals, vecs = eigen(Matrix(H))
+                else
+                    vals, vecs = eigen(Matrix(H))
+                end
+            end
+
+            energies = vals[1:N]
+            vectors = [MBS64Vector(vecs[:, i], subspace) for i in 1:N] # Convert to vector of vectors
+
+            return energies, vectors
+
         end
 
-        return energies, vectors
     end
     function EDsolve(subspace::HilbertSubspace{bits}, Hamiltonian::MBOperator;
-        N::Int64, showtime::Bool = false, method::Symbol = :sparse, ishermitian::Bool = true,
-        min_sparse_dim::Int64 = 100, max_dense_dim::Int64 = 200, map_warning_dim::Int64 = 20000,
-        method_info::Bool = true, element_type::Type = Float64, index_type::Type = Int64,
+        N::Int64, method::Symbol = :sparse, device::Symbol = :cpu,
+        showtime::Bool = false, ishermitian::Bool = true,
+        element_type::Type = Float64, index_type::Type = Int32,
+        min_sparse_dim::Int64 = 100, max_dense_dim::Int64 = 200, map_warning_dim::Int64 = 20000, method_info::Bool = true, 
         krylovkit_kwargs... ) where{bits}
 
         @assert N >= 1
+        @assert length(subspace) <= typemax(index_type) "Hilbert space dimension $(length(subspace)) exceeds limit of index_type=$index_type."
+        @assert method ∈ (:sparse, :dense, :map) "Unknown method: $method. Use :sparse, :dense, :map."
+        @assert device ∈ (:cpu, :gpu, :cuda) "Unknown device: $device. Use :cpu, :gpu, :cuda."
+
 
         if ishermitian
             @assert isupper(Hamiltonian) "Use upper_hermitian form of Hamiltonian operator when ishermitian = true."
         end
 
-        if method == :map
+        if method == :sparse || method == :dense
+            return EDsolve(subspace, Hamiltonian.scats; N, method, device, showtime, ishermitian,
+                min_sparse_dim, max_dense_dim, map_warning_dim, method_info,
+                element_type, index_type, krylovkit_kwargs...
+            )
+        end
 
-            dim = length(subspace)
-            if dim < map_warning_dim && method_info
-                @warn "Linear map may be slow for dim=$dim. Consider using :sparse method."
-            end
+        dim = length(subspace)
+        if dim < map_warning_dim && method_info
+            @warn "Linear map may be slow for dim=$dim. Consider using :sparse method."
+        end
+
+        if device == :cpu
 
             H_map = LinearMap(Hamiltonian, subspace)
 
@@ -307,12 +379,8 @@ module MomentumED
             vectors = [MBS64Vector(vecs[i], subspace) for i in 1:N]
 
             return energies, vectors
-        elseif method == :cuda_map || method == :gpu_map
 
-            dim = length(subspace)
-            if dim < map_warning_dim && method_info
-                @warn "Linear map may be slow for dim=$dim. Consider using :sparse method."
-            end
+        elseif device == :cuda || device == :gpu
             
             Methods._throw_cuda_unavailable()
             H_map = LinearMap(Hamiltonian, subspace)
@@ -335,38 +403,8 @@ module MomentumED
             
             return energies, vectors
             
-        elseif method == :sparse || method == :dense
-            return EDsolve(subspace, Hamiltonian.scats; N, showtime, method, ishermitian,
-                min_sparse_dim, max_dense_dim, map_warning_dim, method_info,
-                element_type, index_type, krylovkit_kwargs...
-            )
-        else
-            error("Unknown method: $method. Use :sparse, :dense, :map, :cuda_map, or :gpu_map.")
         end
 
     end
-
-    """
-    This module provides methods to analysis the ED eigenwavefunctions,
-    including generating particle(hole)/orbital reduced density matrix for entanglement spectrum analysis, 
-    and many-body connection analysis with momentum shifts
-    """
-    module Analysis
-        export PES_1rdm, PES_MomtBlocks, PES_MomtBlock_rdm
-        export OES_NumMomtBlocks, OES_NumMomtBlock_coef
-        export ED_connection_step, ED_connection_gaugefixing!
-        export ED_step_inner_prod
-
-        using EDCore
-        using ..Preparation
-
-        include("analysis/particle_reduced_density_matrix.jl")
-        include("analysis/orbital_reduced_density_matrix.jl")
-        include("analysis/manybody_quantum_geometry.jl")
-    end
-
-    using .Preparation
-    using .Methods
-    using .Analysis
 
 end

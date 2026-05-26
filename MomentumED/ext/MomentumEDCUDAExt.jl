@@ -182,7 +182,7 @@ module MomentumEDCUDAExt
     end
 
     # Constructors, create from CPU linear map or MBOperator
-    import MomentumED.Methods: create_CuLinearMap, _gpu_launch_dims
+    import MomentumED.Methods: create_CuLinearMap, _gpu_launch_dims, create_gpu_matrix
     function create_CuLinearMap(A::LinearMap{bits, F};
         device_id::Union{Nothing, Integer} = nothing,
         threads_per_block::Integer = 256,
@@ -205,6 +205,12 @@ module MomentumEDCUDAExt
             CuArray(h_amp), CuArray(h_in), CuArray(h_out), CuArray(h_basis),
             A.space, threads, launch_blocks
         )
+    end
+    function create_gpu_matrix(H::SparseMatrixCSC)
+        return CuSparseMatrixCSC(H)
+    end
+    function create_gpu_matrix(H::Hermitian{C, SparseMatrixCSC{C}}) where {C <: Complex}
+        return CuSparseMatrixCSC(sparse(H))
     end
 
     # Callable LinearMap-CuVector multiplication
@@ -232,10 +238,11 @@ module MomentumEDCUDAExt
         return y
     end
 
-    # CUDA version of krylov_map_solve
-    import MomentumED.Methods: krylov_map_solve
+    # CUDA version of krylov_map_solve and krylov_matrix_solve. (matrix_solve uses natural CUDA CSR sparse matrix)
+    import MomentumED.Methods: krylov_map_solve, krylov_matrix_solve
     function krylov_map_solve(
-        H::AbstractCuLinearMap{bits, F}, N_eigen::Int64;
+        H::AbstractCuLinearMap{bits, F},
+        N_eigen::Int64;
         ishermitian::Bool=true,
         vec0::Union{Nothing, AbstractVector{Complex{F}}}=nothing,
         krylovkit_kwargs...) where {bits, F}
@@ -254,6 +261,26 @@ module MomentumEDCUDAExt
         KrylovKit.set_num_threads(previous_threads)
         return results
     end
+    function krylov_matrix_solve(
+        H::CuSparseMatrixCSC{Complex{eltype}, idtype}, 
+        N_eigen::Int64;
+        ishermitian::Bool = true,
+        vec0::Union{Nothing, Vector{Complex{eltype}}}=nothing,
+        krylovkit_kwargs...) where {eltype <: AbstractFloat, idtype <: Integer}
+
+        m = size(H, 2)
+        if isnothing(vec0)
+            vec0 = rand(Complex{eltype}, m)
+        end
+        N_eigen = min(N_eigen, m)
+
+        previous_threads = KrylovKit.get_num_threads()
+        KrylovKit.set_num_threads(1) 
+        results = eigsolve(H, vec0, N_eigen, :SR; ishermitian, krylovkit_kwargs...)
+        KrylovKit.set_num_threads(previous_threads)
+        return results
+    end
+
 
     # Below are overriding KrylovKit's functions for better GPU memory management
     # in-place restart in krylov eigsolve

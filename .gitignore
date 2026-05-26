@@ -5,7 +5,7 @@
 deps/deps.jl
 deps/build.log
 deps/builds/
-Manifest.toml
+*Manifest.toml
 *.jld2
 
 # System specific
@@ -55,7 +55,7 @@ dist/
 *.backup
 
 # working files
-examples/Landau level sphere*
+examples/Landau level sphere/test*
 examples/TMDmoire*
 examples/Landau level torus/test*
 

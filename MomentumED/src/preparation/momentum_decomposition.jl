@@ -194,6 +194,8 @@ function ED_momentum_subspaces(para::EDPara{dim}, N_each_component;
     @assert length(N_each_component) == para.Nc_conserve "The length of number_list must be equal to the number of conserved components $(para.Nc_conserve)"
     Gk = para.Gk
 
+    # println("System dimensions: $dim, momentum conservation: $Gk, number of conserved components: $(para.Nc_conserve)")
+
     # Determine momentum ranges
     if momentum_restriction
         # Preprocess momentum list to be within Gk and no duplicates
@@ -235,7 +237,7 @@ function ED_momentum_subspaces(para::EDPara{dim}, N_each_component;
             local_list_of_lists[t], momentum_list, 
             para, collect(N_each_component),
             reinterpret(MBS64{0}, 0),              # accumulated_mbs
-            (0, 0),                                # accumulated_momentum
+            ntuple(Returns(0), Val(dim)),          # accumulated_momentum
             chunk_starts[t], chunk_ends[t];        # give the chunk start and end only for the outermost iteration
             mask, selection_rule
         )
