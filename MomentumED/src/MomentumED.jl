@@ -27,7 +27,8 @@ export ED_scatterlist_onebody, ED_scatterlist_twobody
 
 # methods
 public SparseHmltMatrix, LinearMap
-public release_cuda, CUDA_AVAILABLE, CUDA_KRYLOV_INPLACE_RESTART_CHUNKSIZE, CUDA_MEMORY_MONITOR
+public GPU_AVAILABLE, DEFAULT_GPU, GPU_MEMORY_MONITOR
+public activate_gpu_device, release_gpu_memory
 
 # analysis - reduced density matrix for entanglement spectrum
 export PES_1rdm, PES_MomtBlocks, PES_MomtBlock_rdm
@@ -71,7 +72,8 @@ module MomentumED
 
     # methods
     public SparseHmltMatrix, LinearMap
-    public release_cuda, CUDA_AVAILABLE, CUDA_KRYLOV_INPLACE_RESTART_CHUNKSIZE, CUDA_MEMORY_MONITOR
+    public GPU_AVAILABLE, DEFAULT_GPU, GPU_MEMORY_MONITOR
+    public activate_gpu_device, release_gpu_memory
 
     # analysis - reduced density matrix for entanglement spectrum
     export PES_1rdm, PES_MomtBlocks, PES_MomtBlock_rdm
@@ -117,10 +119,13 @@ module MomentumED
         export krylov_map_solve, krylov_matrix_solve
 
         # CUDA-specific flags, parameters, and functions
-        export release_cuda
-        export CUDA_AVAILABLE
-        export CUDA_KRYLOV_INPLACE_RESTART_CHUNKSIZE
-        export CUDA_MEMORY_MONITOR
+        # export release_cuda
+        # export CUDA_AVAILABLE
+        # export CUDA_KRYLOV_INPLACE_RESTART_CHUNKSIZE
+        # export CUDA_MEMORY_MONITOR
+
+        export GPU_AVAILABLE, DEFAULT_GPU, GPU_MEMORY_MONITOR
+        export activate_gpu_device, release_gpu_memory
 
         using EDCore
         using ..Preparation
@@ -131,7 +136,7 @@ module MomentumED
         
         include("method/sparse_matrix.jl")
         include("method/linear_map.jl")
-        include("method/gpu_linear_map.jl")
+        include("method/gpu_interface.jl")
     end
 
     """
@@ -219,7 +224,7 @@ module MomentumED
         @assert N >= 1 "N should be at least 1."
         @assert length(subspace) <= typemax(index_type) "Hilbert space dimension $(length(subspace)) exceeds limit of index_type=$index_type."
         @assert method ∈ (:sparse, :dense, :map) "Unknown method: $method. Use :sparse, :dense, :map."
-        @assert device ∈ (:cpu, :gpu, :cuda) "Unknown device: $device. Use :cpu, :gpu, :cuda."
+        @assert device ∈ (:cpu, :gpu, :cuda, :oneapi, :metal, :multi_cuda) "Unknown device: $device. Use :cpu, :gpu, :cuda, :oneapi, :metal, :multi_cuda."
 
         if method == :map
             error("Linear map methods are only supported when input Hamitonian is MBOperator instead of Vector{Scatter}.")
@@ -273,10 +278,43 @@ module MomentumED
 
                 return energies, vectors
 
-            elseif device == :cuda || device == :gpu
+            # elseif device == :cuda # keep the old method only for :cuda before new methods are tested working
 
-                Methods._throw_cuda_unavailable()
-                H_gpu = Methods.create_gpu_matrix(H)
+            #     Methods._throw_cuda_unavailable()
+            #     H_gpu = Methods.create_gpu_matrix(H)
+
+            #     # Solve the eigenvalue problem with GPU-accelerated sparse matrix
+            #     if showtime
+            #         @time vals, vecs_gpu, _ = krylov_matrix_solve(H_gpu, N; ishermitian, krylovkit_kwargs...)
+            #     else
+            #         vals, vecs_gpu, _ = krylov_matrix_solve(H_gpu, N; ishermitian, krylovkit_kwargs...)
+            #     end
+
+            #     if length(vals) < N
+            #         error("Krylov method fails. Cannot find $N eigenvectors.")
+            #     end
+            #     energies = vals[1:N]
+            #     vectors = [MBS64Vector(Array(vecs_gpu[i]), subspace) for i in 1:N]
+
+            #     # free GPU memory
+            #     H_gpu = nothing; vecs_gpu = nothing
+            #     release_cuda(2)
+
+            #     return energies, vectors
+
+            elseif device ∈ (:cuda, :oneapi, :metal, :multi_cuda, :gpu)
+
+                if device == :gpu
+                    device = DEFAULT_GPU[]
+                    if device == :nogpu
+                        throw(ArgumentError(
+                            "No GPU available. Please load a supported GPU extension and verify availability."
+                        ))
+                    end
+                end
+
+                Methods._throw_gpu_unavailable(device)
+                H_gpu = Methods.create_gpu_matrix(H, Val(device))
 
                 # Solve the eigenvalue problem with GPU-accelerated sparse matrix
                 if showtime
@@ -293,7 +331,7 @@ module MomentumED
 
                 # free GPU memory
                 H_gpu = nothing; vecs_gpu = nothing
-                release_cuda(2)
+                release_gpu_memory(Val(device), 2)
 
                 return energies, vectors
 
@@ -344,7 +382,7 @@ module MomentumED
         @assert N >= 1
         @assert length(subspace) <= typemax(index_type) "Hilbert space dimension $(length(subspace)) exceeds limit of index_type=$index_type."
         @assert method ∈ (:sparse, :dense, :map) "Unknown method: $method. Use :sparse, :dense, :map."
-        @assert device ∈ (:cpu, :gpu, :cuda) "Unknown device: $device. Use :cpu, :gpu, :cuda."
+        @assert device ∈ (:cpu, :gpu, :cuda, :oneapi, :metal, :multi_cuda) "Unknown device: $device. Use :cpu, :gpu, :cuda, :oneapi, :metal, :multi_cuda."
 
 
         if ishermitian
@@ -380,29 +418,63 @@ module MomentumED
 
             return energies, vectors
 
-        elseif device == :cuda || device == :gpu
+        # elseif device == :cuda # keep the old method only for :cuda before new methods are tested working
             
-            Methods._throw_cuda_unavailable()
-            H_map = LinearMap(Hamiltonian, subspace)
-            H_gpu = Methods.create_CuLinearMap(H_map)
+        #     Methods._throw_cuda_unavailable()
+        #     H_map = LinearMap(Hamiltonian, subspace)
+        #     H_gpu = Methods.create_CuLinearMap(H_map)
 
-            # Solve the eigenvalue problem with GPU-accelerated linear map
+        #     # Solve the eigenvalue problem with GPU-accelerated linear map
+        #     if showtime
+        #         @time vals, vecs_gpu, _ = krylov_map_solve(H_gpu, N; ishermitian, krylovkit_kwargs...)
+        #     else
+        #         vals, vecs_gpu, _ = krylov_map_solve(H_gpu, N; ishermitian, krylovkit_kwargs...)
+        #     end
+
+        #     length(vals) < N && error("Krylov method fails. Cannot find $N eigenvectors.")
+        #     energies = vals[1:N]
+        #     vectors = [MBS64Vector(Array(vecs_gpu[i]), subspace) for i in 1:N]
+
+        #     # free GPU memory
+        #     H_gpu = nothing; vecs_gpu = nothing
+        #     release_cuda(2)
+            
+        #     return energies, vectors
+
+        elseif device ∈ (:cuda, :oneapi, :metal, :multi_cuda, :gpu)
+            
+            if device == :gpu
+                device = DEFAULT_GPU[]
+                if device == :nogpu
+                    throw(ArgumentError(
+                        "No GPU available. Please load a supported GPU extension and verify availability."
+                    ))
+                end
+            end
+
+            Methods._throw_gpu_unavailable(device)
+            H_map = LinearMap(Hamiltonian, subspace)
+            H_gpu = Methods.create_gpu_linearmap(H_map, Val(device))
+
+            # Solve the eigenvalue problem with GPU-accelerated sparse matrix
             if showtime
                 @time vals, vecs_gpu, _ = krylov_map_solve(H_gpu, N; ishermitian, krylovkit_kwargs...)
             else
                 vals, vecs_gpu, _ = krylov_map_solve(H_gpu, N; ishermitian, krylovkit_kwargs...)
             end
 
-            length(vals) < N && error("Krylov method fails. Cannot find $N eigenvectors.")
+            if length(vals) < N
+                error("Krylov method fails. Cannot find $N eigenvectors.")
+            end
             energies = vals[1:N]
             vectors = [MBS64Vector(Array(vecs_gpu[i]), subspace) for i in 1:N]
 
             # free GPU memory
             H_gpu = nothing; vecs_gpu = nothing
-            release_cuda(2)
-            
+            release_gpu_memory(Val(device), 2)
+
             return energies, vectors
-            
+
         end
 
     end

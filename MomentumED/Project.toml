@@ -11,10 +11,16 @@ SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
 
 [weakdeps]
+oneAPI = "8f75cd03-7ff8-4ecb-9b8f-daf728133b1b"
+Metal = "dde4c033-4e86-420c-a63e-0dd931031962"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+NCCL = "3fe64909-d7a1-4096-9b7d-7a0f12cf0f6b"
 
 [extensions]
+MomentumEDoneAPIExt = "oneAPI"
+MomentumEDMetalExt = "Metal"
 MomentumEDCUDAExt = "CUDA"
+MomentumEDNCCLExt = ["CUDA", "NCCL"]
 
 [compat]
 EDCore = "0.2.0"

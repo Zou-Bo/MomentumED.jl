@@ -50,10 +50,10 @@ function plot_ed_spectrum(energies, ss_k, Gk;
 end
 
 # System parameters
-k_list = [0 1 2 3 0 1 2 3 0 1 2 3 0 1 2 3 0 1 2 3 0 1 2 3;
-          0 0 0 0 1 1 1 1 2 2 2 2 3 3 3 3 4 4 4 4 5 5 5 5]
-Nk = 24         # Total number of k-points
-Gk = (4, 6)     # Grid dimensions (G1_direction, G2_direction)
+k_list = [0 1 2 3 0 1 2 3 0 1 2 3 0 1 2 3 0 1 2 3;
+          0 0 0 0 1 1 1 1 2 2 2 2 3 3 3 3 4 4 4 4]
+Nk = 20         # Total number of k-points
+Gk = (4, 5)     # Grid dimensions (G1_direction, G2_direction)
 Ne = 8          # Ne electrons for this system
 # Set up component parameters: (layer, level, Chern number, pseudospin)
 sys_int = LandauInteraction(ReciprocalLattice(:triangular), (1, 0, 1, 0));
@@ -73,19 +73,19 @@ hmlt = MBOperator(scat, upper_hermitian = true)
 
 
 
-using CUDA
+using oneAPI
 # Base.retry_load_extensions()
 
-MomentumED.GPU_MEMORY_MONITOR[] # default value true
-MomentumED.GPU_MEMORY_MONITOR[] = false
+MomentumED.Methods.GPU_MEMORY_MONITOR[] # default value true
+MomentumED.Methods.GPU_MEMORY_MONITOR[] = true
 
 
-MomentumED.release_gpu_memory(Val(:cuda), 2)
+MomentumED.release_gpu_memory(Val(:oneapi), 2)
 
 
 e_sparse, _ = EDsolve(subspaces[1], hmlt; N=4, method=:sparse, device=:cpu);
-e_gpu1, _   = EDsolve(subspaces[1], hmlt; N=4, method=:sparse, device=:cuda);
-e_gpu2, _   = EDsolve(subspaces[1], hmlt; N=4, method=:map, device=:cuda);
+e_gpu1, _   = EDsolve(subspaces[1], hmlt; N=4, method=:sparse, device=:oneapi);
+e_gpu2, _   = EDsolve(subspaces[1], hmlt; N=4, method=:map, device=:oneapi);
 @show maximum(abs.(e_sparse .- e_gpu1))
 @show maximum(abs.(e_sparse .- e_gpu2))
 
@@ -94,20 +94,18 @@ e_gpu2, _   = EDsolve(subspaces[1], hmlt; N=4, method=:map, device=:cuda);
 Neigen = 4  # Number of eigenvalues to compute per subspace
 energies = Vector{Vector{Float64}}(undef, length(subspaces));
 vectors = Vector{Vector{<:MBS64Vector}}(undef, length(subspaces));
-range = 1:8
+range = 1:4
 @time for i in eachindex(subspaces)[range]
     println("Processing subspace #$i with size $(length(subspaces[i])), momentum $(ss_k[i])")
     energies[i], vectors[i] = EDsolve(subspaces[i], hmlt;
-        N = Neigen, showtime = false, ishermitian = true, method_info = false,
+        N = Neigen, showtime = true, ishermitian = true, method_info = false,
         # method = :sparse, device = :cpu,
-        method = :sparse, device = :cuda,
-        # method = :map, device = :cuda,
-        verbosity = 1
+        # method = :sparse, device = :oneapi,
+        method = :map, device = :oneapi,
+        verbosity = 2
     )
 end
 
 plot_ed_spectrum(energies[range]/Nk/LLT.W0, ss_k, Gk;
     title = "Nk = $Nk, Ne = $Ne",
 );
-
-

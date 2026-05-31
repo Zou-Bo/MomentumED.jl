@@ -1,5 +1,10 @@
 using LinearAlgebra
 
+# output 1 if number is odd and 0 if number is even
+function scat_parity(mbs_mid::MBS64{bits}, scat::Scatter{C, MBS64{bits}})::Int where {C, bits}
+    count_ones(mbs_mid.n & scat.parity_mask) & 1
+end
+
 import Base: *
 
 """
@@ -19,11 +24,8 @@ function *(scat::Scatter{C, MBS64{bits}}, mbs_in::MBS64{bits})::Tuple{C, MBS64{b
             mbs_mid = empty!(mbs_in, scat.in.n)
             if isempty(mbs_mid, scat.out.n)
                 mbs_out = occupy!(mbs_mid, scat.out.n)
-                if isodd(scat_occ_number(mbs_mid, scat.in.n) + scat_occ_number(mbs_mid, scat.out.n))
-                    return -scat.Amp, mbs_out
-                else
-                    return scat.Amp, mbs_out
-                end
+                sign = 1 - 2 * scat_parity(mbs_mid, scat)
+                return sign * scat.Amp, mbs_out
             end
         end
     end
@@ -58,11 +60,8 @@ function *(mbs_out::MBS64{bits}, scat::Scatter{C, MBS64{bits}})::Tuple{C, MBS64{
             mbs_mid = empty!(mbs_out, scat.out.n)
             if isempty(mbs_mid, scat.in.n)
                 mbs_in = occupy!(mbs_mid, scat.in.n)
-                if isodd(scat_occ_number(mbs_mid, scat.in.n) + scat_occ_number(mbs_mid, scat.out.n))
-                    return -scat.Amp, mbs_in
-                else
-                    return scat.Amp, mbs_in
-                end
+                sign = 1 - 2 * scat_parity(mbs_mid, scat)
+                return sign * scat.Amp, mbs_in
             end
         end
     end

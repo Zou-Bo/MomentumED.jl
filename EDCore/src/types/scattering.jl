@@ -4,6 +4,19 @@
 using LinearAlgebra
 using Combinatorics
 
+function parity_mask(occ_mask::UInt64)::UInt64
+    mask = zero(UInt64)
+    while occ_mask > 0
+        tz1 = trailing_zeros(occ_mask)
+        occ_mask &= occ_mask - UInt64(1) # clear the last bit
+        tz2 = trailing_zeros(occ_mask)
+        occ_mask &= occ_mask - UInt64(1) # clear the last bit
+        mask += UInt64(1) << tz2
+        mask -= UInt64(1) << (tz1 + 1)
+    end
+    return mask
+end
+
 """
     Scatter{C <: Complex, MBS <: MBS64}
     
@@ -40,6 +53,12 @@ struct Scatter{C <: Complex, MBS <: MBS64}
     Amp::C
     out::MBS
     in::MBS
+
+    parity_mask::UInt64
+
+    function Scatter{C, MBS}(Amp::C, out::MBS, in::MBS) where {C <: Complex, MBS <: MBS64}
+        new{C, MBS}(Amp, out, in, parity_mask(out.n) ⊻ parity_mask(in.n))
+    end
 end
 function Scatter(V::C, out_in::Int64...; 
     bits::Int64, upper_hermitian::Bool = false

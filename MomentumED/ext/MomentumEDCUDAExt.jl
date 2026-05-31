@@ -4,6 +4,284 @@ module MomentumEDCUDAExt
     using CUDA
     using KrylovKit
     using LinearAlgebra
+    using SparseArrays
+
+    # global flags and parameters from main module
+    using MomentumED.Methods: GPU_AVAILABLE, DEFAULT_GPU
+    using MomentumED.Methods: GPU_RESTART_CHUNKSIZE, GPU_MEMORY_MONITOR
+
+    function __init__()
+        if CUDA.functional()
+            GPU_AVAILABLE[:cuda][] = true
+            if DEFAULT_GPU[] == :nogpu
+                DEFAULT_GPU[] = :cuda
+            end
+            @info "MomentumED CUDA extension loaded."
+        else
+            GPU_AVAILABLE[:cuda][] = false
+            @warn "CUDA.jl is loaded but no functional NVIDIA GPU detected. GPU methods disabled."
+        end
+    end
+    import MomentumED.Methods: activate_cuda
+    function activate_cuda(; set_default_gpu::Bool = true)
+        println("Activating CUDA GPU device...")
+        if CUDA.functional()
+            GPU_AVAILABLE[:cuda][] = true
+            @info "MomentumED CUDA extension loaded."
+            if set_default_gpu
+                DEFAULT_GPU[] = :cuda
+                @info "CUDA device activated as the default GPU for device=:gpu."
+            end
+        else
+            GPU_AVAILABLE[:cuda][] = false
+            @warn "CUDA.jl is loaded but no functional NVIDIA GPU detected. GPU methods disabled."
+        end
+    end
+
+    # gpu memory release
+    import MomentumED.Methods: release_gpu_memory
+    function release_gpu_memory(::Val{:cuda}, level::Int64 = 2)
+        level >= 3 && CUDA.synchronize()
+        level >= 1 && GC.gc()
+        level >= 2 && CUDA.reclaim()
+    end
+
+    # ══════════════════════════════════════════════════════════════
+    #  CUDA LinearMap type definitions
+    # ══════════════════════════════════════════════════════════════
+
+    using MomentumED.Methods: LinearMap, AbstractGPULinearMap
+    const CuVec{T} = CuArray{T, 1, CUDA.DeviceMemory}  # fully-expanded type for reliable dispatch
+    mutable struct CuLinearMap{bits, F <: AbstractFloat} <: AbstractGPULinearMap{bits, F}
+        scat_amp::CuVec{Complex{F}}
+        scat_in::CuVec{UInt64}
+        scat_out::CuVec{UInt64}
+        scat_parity::CuVec{UInt64}
+
+        space_list::CuVec{UInt64}
+        space::HilbertSubspace{bits}
+    end
+    mutable struct CuAdjointLinearMap{bits, F <: AbstractFloat} <: AbstractGPULinearMap{bits, F}
+        scat_amp::CuVec{Complex{F}}
+        scat_in::CuVec{UInt64}
+        scat_out::CuVec{UInt64}
+        scat_parity::CuVec{UInt64}
+
+        space_list::CuVec{UInt64}
+        space::HilbertSubspace{bits}
+
+        function CuAdjointLinearMap(A::CuLinearMap{bits, F}) where {bits, F <: AbstractFloat}
+            new{bits, F}(A.scat_amp, A.scat_in, A.scat_out, A.scat_parity, A.space_list, A.space)
+        end
+    end
+
+    # ── Interface methods ──
+
+    import Base: adjoint, size, eltype
+    size(A::Union{CuLinearMap, CuAdjointLinearMap}) = (length(A.space), length(A.space))
+    eltype(::Union{CuLinearMap{bits,F}, CuAdjointLinearMap{bits,F}}) where {bits,F} = Complex{F}
+
+    function adjoint(A::CuLinearMap{bits, F}) where {bits, F <: AbstractFloat}
+        CuAdjointLinearMap(A)
+    end
+    function adjoint(A::CuAdjointLinearMap{bits, F}) where {bits, F <: AbstractFloat}
+        CuLinearMap{bits, F}(A.scat_amp, A.scat_in, A.scat_out, A.scat_parity, A.space_list, A.space)
+    end
+
+    #  Constructor — override the fallback in main module
+
+    import MomentumED.Methods: create_gpu_linearmap
+    function create_gpu_linearmap(A::LinearMap{bits, F}, ::Val{:cuda}) where {bits, F}
+
+        # Flatten scatter list into struct-of-arrays on GPU
+        h_amp = Complex{F}[s.Amp for s in A.scat_list]
+        h_in  = UInt64[s.in.n for s in A.scat_list]
+        h_out = UInt64[s.out.n for s in A.scat_list]
+        h_parity = UInt64[s.parity_mask for s in A.scat_list]
+
+        # Basis as raw UInt64 sorted array
+        h_basis = UInt64[mbs.n for mbs in A.space.list]
+
+        return CuLinearMap{bits, F}(
+            CuArray(h_amp),
+            CuArray(h_in),
+            CuArray(h_out),
+            CuArray(h_parity),
+            CuArray(h_basis),
+            A.space
+        )
+    end
+
+    #  Callable — uses shared KernelAbstractions kernels
+
+    using MomentumED.Methods: gpu_matvec!, gpu_adjoint_matvec!
+
+    function (A::CuLinearMap{bits, F})(y::CuVec{Complex{F}}, x::CuVec{Complex{F}}) where {bits, F}
+        gpu_matvec!(y, x, A.space_list, A.scat_amp, A.scat_in, A.scat_out, A.scat_parity)
+        return y
+    end
+
+    function (A::CuAdjointLinearMap{bits, F})(y::CuVec{Complex{F}}, x::CuVec{Complex{F}}) where {bits, F}
+        gpu_adjoint_matvec!(y, x, A.space_list, A.scat_amp, A.scat_in, A.scat_out, A.scat_parity)
+        return y
+    end
+
+    function (A::CuLinearMap{bits, F})(x::CuVec{Complex{F}}) where {bits, F}
+        y = similar(x)
+        A(y, x)
+        return y
+    end
+
+    function (A::CuAdjointLinearMap{bits, F})(x::CuVec{Complex{F}}) where {bits, F}
+        y = similar(x)
+        A(y, x)
+        return y
+    end
+
+    # ══════════════════════════════════════════════════════════════
+    #  CUDA sparse matrix method
+    # ══════════════════════════════════════════════════════════════
+
+    using CUDA.cuSPARSE: CuSparseMatrixCSR
+    import MomentumED.Methods: create_gpu_matrix
+    function create_gpu_matrix(H::SparseMatrixCSC, ::Val{:cuda})
+        return CuSparseMatrixCSR(H)
+    end
+    function create_gpu_matrix(H::Hermitian{C, SparseMatrixCSC{C}}, ::Val{:cuda}) where {C <: Complex}
+        return CuSparseMatrixCSR(sparse(H))
+    end
+
+    # ══════════════════════════════════════════════════════════════
+    #  KrylovKit solver
+    # ══════════════════════════════════════════════════════════════
+
+    import MomentumED.Methods: krylov_map_solve, krylov_matrix_solve
+    function krylov_map_solve(
+        H::Union{CuLinearMap{bits, F}, CuAdjointLinearMap{bits, F}},
+        N_eigen::Int64;
+        ishermitian::Bool=true,
+        vec0::Union{Nothing, AbstractVector{Complex{F}}}=nothing,
+        krylovkit_kwargs...) where {bits, F}
+
+        m = length(H.space)
+        if isnothing(vec0)
+            vec0 = complex.(CUDA.rand(F, m), CUDA.rand(F, m))
+        elseif !(vec0 isa CuVec)
+            vec0 = CuArray(vec0)
+        end
+        N_eigen = min(N_eigen, m)
+
+        previous_threads = KrylovKit.get_num_threads()
+        KrylovKit.set_num_threads(1)
+        results = eigsolve(H, vec0, N_eigen, :SR; ishermitian, krylovkit_kwargs...)
+        KrylovKit.set_num_threads(previous_threads)
+        return results
+    end
+    function krylov_matrix_solve(
+        H::CuSparseMatrixCSR{Complex{F}, idtype},
+        N_eigen::Int64;
+        ishermitian::Bool = true,
+        vec0::Union{Nothing, AbstractVector{Complex{F}}}=nothing,
+        krylovkit_kwargs...) where {F <: AbstractFloat, idtype <: Integer}
+
+        m = size(H, 2)
+        if isnothing(vec0)
+            vec0 = complex.(CUDA.rand(F, m), CUDA.rand(F, m))
+        elseif !(vec0 isa CuArray)
+            vec0 = CuArray(vec0)
+        end
+        N_eigen = min(N_eigen, m)
+
+        previous_threads = KrylovKit.get_num_threads()
+        KrylovKit.set_num_threads(1)
+        results = eigsolve(H, vec0, N_eigen, :SR; ishermitian, krylovkit_kwargs...)
+        KrylovKit.set_num_threads(previous_threads)
+        return results
+    end
+
+    # ══════════════════════════════════════════════════════════════
+    #  KrylovKit memory management overrides
+    # ══════════════════════════════════════════════════════════════
+
+    import KrylovKit: basistransform!, OrthonormalBasis
+    import LinearAlgebra: mul!
+
+    # In-place basis transform using chunked matrix multiply
+    function basistransform!(b::OrthonormalBasis{<:CuArray{T, 1, CUDA.DeviceMemory}}, U::AbstractMatrix) where {T}
+
+        m, n = size(U)
+        m == length(b) || throw(DimensionMismatch())
+
+        N = length(b[1])
+        chunk = min(N, GPU_RESTART_CHUNKSIZE[])
+
+        buf_in  = CuArray{T}(undef, chunk, m)
+        buf_out = CuArray{T}(undef, chunk, n)
+        U_gpu   = CuArray(T.(U))
+
+        for start in 1:chunk:N
+            len = min(chunk, N - start + 1)
+            stop = start + len - 1
+
+            for j in 1:m
+                copyto!(view(buf_in, 1:len, j), view(b[j], start:stop))
+            end
+
+            mul!(view(buf_out, 1:len, :), view(buf_in, 1:len, :), view(U_gpu, :, 1:n))
+
+            for j in 1:n
+                copyto!(view(b[j], start:stop), view(buf_out, 1:len, j))
+            end
+        end
+
+        GPU_MEMORY_MONITOR[] && CUDA.pool_status()
+
+        CUDA.unsafe_free!(buf_in)
+        CUDA.unsafe_free!(buf_out)
+        CUDA.unsafe_free!(U_gpu)
+
+        return b
+    end
+
+    # GC after Krylov restart
+    import KrylovKit: shrink!, LanczosFactorization
+    function shrink!(state::LanczosFactorization{<:CuArray{T, 1, CUDA.DeviceMemory}, S}, k;
+        verbosity::Int = KrylovDefaults.verbosity[]) where {T <: Complex, S <: Real}
+
+        length(state) == length(state.V) ||
+            error("we cannot shrink LanczosFactorization without keeping Lanczos vectors")
+        length(state) <= k && return state
+        V = state.V
+        while length(V) > k + 1
+            pop!(V)
+        end
+        r = pop!(V)
+        resize!(state.αs, k)
+        resize!(state.βs, k)
+        state.k = k
+        β = KrylovKit.normres(state)
+        if verbosity > KrylovKit.EACHITERATION_LEVEL
+            @info "Lanczos reduction to dimension $k: subspace normres = $(KrylovKit.normres2string(β))"
+        end
+        state.r = KrylovKit.scale!!(r, β)
+
+        # GC after shrinking LanczosFactorization
+        release_gpu_memory(Val(:cuda), 2)
+
+        return state
+    end
+
+end
+
+#=
+
+# old mudole
+module MomentumEDCUDAExt
+
+    using MomentumED
+    using CUDA
+    using KrylovKit
+    using LinearAlgebra
 
     # global flags and parameters
     using MomentumED: CUDA_AVAILABLE, CUDA_KRYLOV_INPLACE_RESTART_CHUNKSIZE, CUDA_MEMORY_MONITOR
@@ -265,12 +543,14 @@ module MomentumEDCUDAExt
         H::CuSparseMatrixCSC{Complex{eltype}, idtype}, 
         N_eigen::Int64;
         ishermitian::Bool = true,
-        vec0::Union{Nothing, Vector{Complex{eltype}}}=nothing,
+        vec0::Union{Nothing, AbstractVector{Complex{eltype}}}=nothing,
         krylovkit_kwargs...) where {eltype <: AbstractFloat, idtype <: Integer}
 
         m = size(H, 2)
         if isnothing(vec0)
-            vec0 = rand(Complex{eltype}, m)
+            vec0 = complex.(CUDA.rand(F, m), CUDA.rand(F, m))
+        elseif !(vec0 isa CuVector)
+            vec0 = CuArray(vec0)
         end
         N_eigen = min(N_eigen, m)
 
@@ -356,3 +636,5 @@ module MomentumEDCUDAExt
 
 
 end
+
+=#
